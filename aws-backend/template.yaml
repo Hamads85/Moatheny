@@ -1,0 +1,383 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Moatheny - Islamic Prayer App Backend API
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        USERS_TABLE: !Ref UsersTable
+        SETTINGS_TABLE: !Ref SettingsTable
+        FAVORITES_TABLE: !Ref FavoritesTable
+        TASBIH_TABLE: !Ref TasbihTable
+        PRAYERS_TABLE: !Ref PrayersTable
+        ANALYTICS_TABLE: !Ref AnalyticsTable
+        REGION: !Ref AWS::Region
+
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,Authorization'"
+      AllowOrigin: "'*'"
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+
+Resources:
+
+  # ===================== COGNITO =====================
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub moatheny-users-${Stage}
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: false
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+      EmailVerificationMessage: !Sub |
+        مرحباً بك في تطبيق موذني! 🕌
+
+        رمز التحقق الخاص بك هو: {####}
+
+        إذا لم تطلب هذا الرمز، يمكنك تجاهل هذه الرسالة.
+      EmailVerificationSubject: "موذني - رمز التحقق الخاص بك"
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub moatheny-app-${Stage}
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  # ===================== API GATEWAY =====================
+  MoathenyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Stage
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt UserPool.Arn
+        AddDefaultAuthorizerToCorsPreflight: false
+
+  # ===================== LAMBDA FUNCTIONS =====================
+
+  # --- Settings ---
+  GetSettingsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/functions/
+      Handler: settings.get_settings
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MoathenyApi
+            Path: /settings
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref SettingsTable
+
+  SaveSettingsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/functions/
+      Handler: settings.save_settings
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MoathenyApi
+            Path: /settings
+            Method: PUT
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SettingsTable
+
+  # --- Favorites ---
+  GetFavoritesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/functions/
+      Handler: favorites.get_favorites
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MoathenyApi
+            Path: /favorites
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FavoritesTable
+
+  SaveFavoriteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/functions/
+      Handler: favorites.save_favorite
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MoathenyApi
+            Path: /favorites
+            Method: POST
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FavoritesTable
+
+  DeleteFavoriteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/functions/
+      Handler: favorites.delete_favorite
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MoathenyApi
+            Path: /favorites/{itemId}
+            Method: DELETE
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FavoritesTable
+
+  # --- Tasbih ---
+  GetTasbihFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/functions/
+      Handler: tasbih.get_tasbih
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MoathenyApi
+            Path: /tasbih
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TasbihTable
+
+  SaveTasbihFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/functions/
+      Handler: tasbih.save_tasbih
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MoathenyApi
+            Path: /tasbih
+            Method: POST
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TasbihTable
+
+  # --- Prayers Log ---
+  GetPrayersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/functions/
+      Handler: prayers.get_prayers
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MoathenyApi
+            Path: /prayers
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PrayersTable
+
+  SavePrayerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/functions/
+      Handler: prayers.save_prayer
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MoathenyApi
+            Path: /prayers
+            Method: POST
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PrayersTable
+
+  # --- Sync ---
+  SyncDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/functions/
+      Handler: sync.sync_data
+      Timeout: 60
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MoathenyApi
+            Path: /sync
+            Method: POST
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SettingsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FavoritesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TasbihTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PrayersTable
+
+  # --- Analytics (public) ---
+  LogAnalyticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/functions/
+      Handler: analytics.log_event
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MoathenyApi
+            Path: /analytics
+            Method: POST
+            Auth:
+              Authorizer: NONE
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AnalyticsTable
+
+  # ===================== DYNAMODB TABLES =====================
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub moatheny-users-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+
+  SettingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub moatheny-settings-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+
+  FavoritesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub moatheny-favorites-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: itemId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: itemId
+          KeyType: RANGE
+
+  TasbihTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub moatheny-tasbih-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: counterId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: counterId
+          KeyType: RANGE
+
+  PrayersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub moatheny-prayers-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: date
+          KeyType: RANGE
+
+  AnalyticsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub moatheny-analytics-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${MoathenyApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito App Client ID
+    Value: !Ref UserPoolClient

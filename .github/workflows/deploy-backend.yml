@@ -1,0 +1,71 @@
+name: Deploy AWS Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'aws-backend/**'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+  STACK_NAME: moatheny-backend
+  STAGE: prod
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::842676017340:role/github-actions-deploy-moatheny
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: SAM Build
+        working-directory: aws-backend
+        run: sam build --template-file template.yaml
+
+      - name: SAM Deploy
+        working-directory: aws-backend
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          S3_BUCKET="moatheny-deploy-${ACCOUNT_ID}-${{ env.AWS_REGION }}"
+
+          aws s3 ls "s3://${S3_BUCKET}" 2>/dev/null || \
+            aws s3 mb "s3://${S3_BUCKET}" --region ${{ env.AWS_REGION }}
+
+          sam deploy \
+            --stack-name ${{ env.STACK_NAME }} \
+            --s3-bucket "${S3_BUCKET}" \
+            --region ${{ env.AWS_REGION }} \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides Stage=${{ env.STAGE }} \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Show Outputs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs' \
+            --output table

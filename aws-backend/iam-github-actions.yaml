@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IAM Role for GitHub Actions to deploy Moatheny backend
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: GitHub organization or username
+  GitHubRepo:
+    Type: String
+    Default: moatheny
+    Description: GitHub repository name
+
+Resources:
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: github-actions-deploy-moatheny
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub 'arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOrg}/${GitHubRepo}:*'
+      
+      Policies:
+        - PolicyName: MoathenyDeployPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CloudFormation
+                Effect: Allow
+                Action:
+                  - cloudformation:*
+                Resource:
+                  - !Sub 'arn:aws:cloudformation:*:${AWS::AccountId}:stack/moatheny-*'
+                  - !Sub 'arn:aws:cloudformation:*:${AWS::AccountId}:stackset/moatheny-*'
+                  - !Sub 'arn:aws:cloudformation:*:aws:transform/*'
+              
+              - Sid: S3Deploy
+                Effect: Allow
+                Action:
+                  - s3:*
+                Resource:
+                  - !Sub 'arn:aws:s3:::moatheny-deploy-${AWS::AccountId}-*'
+                  - !Sub 'arn:aws:s3:::moatheny-deploy-${AWS::AccountId}-*/*'
+              
+              - Sid: Lambda
+                Effect: Allow
+                Action:
+                  - lambda:*
+                Resource:
+                  - !Sub 'arn:aws:lambda:*:${AWS::AccountId}:function:moatheny-*'
+              
+              - Sid: APIGateway
+                Effect: Allow
+                Action:
+                  - apigateway:*
+                Resource:
+                  - !Sub 'arn:aws:apigateway:*::/restapis/*'
+                  - !Sub 'arn:aws:apigateway:*::/restapis'
+              
+              - Sid: DynamoDB
+                Effect: Allow
+                Action:
+                  - dynamodb:*
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:*:${AWS::AccountId}:table/moatheny-*'
+              
+              - Sid: Cognito
+                Effect: Allow
+                Action:
+                  - cognito-idp:*
+                Resource:
+                  - !Sub 'arn:aws:cognito-idp:*:${AWS::AccountId}:userpool/*'
+              
+              - Sid: IAMPassRole
+                Effect: Allow
+                Action:
+                  - iam:PassRole
+                  - iam:GetRole
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                Resource:
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/moatheny-*'
+              
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:*
+                Resource:
+                  - !Sub 'arn:aws:logs:*:${AWS::AccountId}:log-group:/aws/lambda/moatheny-*'
+              
+              - Sid: STSGetCallerIdentity
+                Effect: Allow
+                Action:
+                  - sts:GetCallerIdentity
+                Resource: '*'
+
+Outputs:
+  RoleArn:
+    Description: ARN of the GitHub Actions IAM Role
+    Value: !GetAtt GitHubActionsRole.Arn
