@@ -79,31 +79,33 @@ struct QiblaCalculator {
     
     /// حساب زاوية دوران السهم للإشارة إلى القبلة
     /// 
-    /// المنطق:
-    /// - السهم يشير للأعلى في البداية (0°)
-    /// - نحتاج تدويره ليشير لاتجاه القبلة
-    /// - إذا الجهاز موجه للشمال (heading=0) والقبلة في 243°
-    ///   → السهم يجب أن يدور 243° في اتجاه عقارب الساعة
-    /// - إذا الجهاز موجه للقبلة (heading=243°) والقبلة في 243°
-    ///   → السهم يجب أن يشير للأعلى (rotation=0)
+    /// المنطق الجديد:
+    /// - السهم يشير دائماً لاتجاه القبلة الفعلي في العالم
+    /// - البوصلة تدور مع الجهاز (عكس deviceHeading)
+    /// - السهم يدور نسبة للبوصلة ليشير للقبلة
+    ///
+    /// مثال من الرياض (qiblaDirection = 242.9°):
+    /// - إذا الجهاز موجه للشمال (heading=0): السهم يدور 242.9° (جنوب غرب)
+    /// - إذا الجهاز موجه للشرق (heading=90): السهم يدور 152.9° (جنوب شرق على الشاشة)
+    /// - إذا الجهاز موجه للقبلة (heading=242.9): السهم يدور 0° (للأعلى)
     ///
     /// الصيغة: rotation = qiblaDirection - deviceHeading
     ///
     /// - Parameters:
-    ///   - qiblaDirection: اتجاه القبلة (0-360)
-    ///   - deviceHeading: اتجاه الجهاز الحالي (0-360)
-    /// - Returns: زاوية دوران السهم بالدرجات
+    ///   - qiblaDirection: اتجاه القبلة من الشمال (0-360)
+    ///   - deviceHeading: اتجاه الجهاز الحالي من الشمال (0-360)
+    /// - Returns: زاوية دوران السهم على الشاشة بالدرجات
     static func calculateArrowRotation(qiblaDirection: Double, deviceHeading: Double) -> Double {
-        // التحقق من القيم غير الصالحة
         guard qiblaDirection.isFinite && deviceHeading.isFinite else {
             return 0
         }
         
-        // الصيغة الصحيحة: qiblaDirection - deviceHeading
+        // السهم يشير لاتجاه القبلة نسبة لاتجاه الجهاز
         var rotation = qiblaDirection - deviceHeading
         
-        // تطبيع إلى [-180, 180] لاختيار أقصر مسار للدوران
-        rotation = (rotation + 180).truncatingRemainder(dividingBy: 360) - 180
+        // تطبيع إلى [0, 360)
+        rotation = rotation.truncatingRemainder(dividingBy: 360)
+        if rotation < 0 { rotation += 360 }
         
         return rotation
     }

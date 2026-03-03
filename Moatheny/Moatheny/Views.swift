@@ -6818,8 +6818,13 @@ struct EnhancedCalibrationIndicator: View {
     }
 }
 
-// MARK: - Enhanced Compass View
-/// بوصلة محسنة مع تأثيرات بصرية متقدمة
+// MARK: - Enhanced Compass View (تصميم جديد)
+/// بوصلة القبلة المحسنة - تصميم واضح وانسيابي
+/// 
+/// المبدأ:
+/// - البوصلة تدور مع الجهاز (الاتجاهات تبقى صحيحة نسبة للعالم الحقيقي)
+/// - السهم يشير دائماً لاتجاه القبلة الفعلي
+/// - الاتجاهات (شمال، جنوب، شرق، غرب) خارج دائرة البوصلة لتجنب التداخل
 struct EnhancedCompassView: View {
     let arrowRotation: Double
     let isPointingToQibla: Bool
@@ -6828,9 +6833,14 @@ struct EnhancedCompassView: View {
     @State private var pulseScale: CGFloat = 1.0
     @State private var glowIntensity: Double = 0.3
     
+    private let compassSize: CGFloat = 300
+    private let innerRingSize: CGFloat = 250
+    private let tickRadius: CGFloat = 140
+    private let directionLabelRadius: CGFloat = 165
+    
     var body: some View {
         ZStack {
-            // الحلقة الخارجية المتوهجة (تتغير عند التوجيه الصحيح)
+            // 1. الحلقة الخارجية المتوهجة (ثابتة - لا تدور)
             Circle()
                 .stroke(
                     AngularGradient(
@@ -6847,55 +6857,39 @@ struct EnhancedCompassView: View {
                     ),
                     lineWidth: 5
                 )
-                .frame(width: 300, height: 300)
+                .frame(width: compassSize, height: compassSize)
                 .shadow(
                     color: isPointingToQibla ? Color(hex: "00D26A").opacity(glowIntensity) : Color(hex: "D4AF37").opacity(0.3),
                     radius: isPointingToQibla ? 20 : 10
                 )
                 .scaleEffect(pulseScale)
-                .animation(
-                    isPointingToQibla ?
-                        Animation.easeInOut(duration: 1.5).repeatForever(autoreverses: true) :
-                        .default,
-                    value: pulseScale
-                )
             
-            // الحلقة الداخلية
-            Circle()
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                .frame(width: 250, height: 250)
-            
-            // علامات الدرجات على البوصلة (محسنة)
-            ForEach(0..<72, id: \.self) { i in
-                let degree = i * 5
-                VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(
-                            degree % 90 == 0 ? Color(hex: "D4AF37") :
-                            degree % 45 == 0 ? Color.white.opacity(0.6) :
-                            degree % 15 == 0 ? Color.white.opacity(0.3) :
-                            Color.white.opacity(0.15)
-                        )
-                        .frame(
-                            width: degree % 90 == 0 ? 3 : degree % 45 == 0 ? 2 : 1,
-                            height: degree % 90 == 0 ? 20 : degree % 45 == 0 ? 15 : degree % 15 == 0 ? 10 : 5
-                        )
+            // 2. البوصلة الداخلية (تدور عكس اتجاه الجهاز)
+            ZStack {
+                // الحلقة الداخلية
+                Circle()
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    .frame(width: innerRingSize, height: innerRingSize)
+                
+                // علامات الدرجات
+                ForEach(0..<72, id: \.self) { i in
+                    let degree = i * 5
+                    CompassTick(degree: degree)
+                        .offset(y: -tickRadius)
+                        .rotationEffect(.degrees(Double(degree)))
                 }
-                .offset(y: -140)
-                .rotationEffect(.degrees(Double(degree)))
+                
+                // الاتجاهات الأربعة (خارج الدائرة)
+                FixedDirectionLabel(text: "N", angle: 0, radius: directionLabelRadius, isNorth: true)
+                FixedDirectionLabel(text: "E", angle: 90, radius: directionLabelRadius, isNorth: false)
+                FixedDirectionLabel(text: "S", angle: 180, radius: directionLabelRadius, isNorth: false)
+                FixedDirectionLabel(text: "W", angle: 270, radius: directionLabelRadius, isNorth: false)
             }
+            .rotationEffect(.degrees(-deviceHeading))
+            .animation(.spring(response: 0.15, dampingFraction: 0.8), value: deviceHeading)
             
-            // أسماء الاتجاهات (مع تحسينات بصرية)
+            // 3. المركز (الكعبة) - ثابت
             ZStack {
-                CompassDirectionLabel(text: "شمال", baseAngle: 0, deviceHeading: deviceHeading, color: Color(hex: "FF6B6B"), radius: 115)
-                CompassDirectionLabel(text: "شرق", baseAngle: 90, deviceHeading: deviceHeading, color: .white, radius: 115)
-                CompassDirectionLabel(text: "جنوب", baseAngle: 180, deviceHeading: deviceHeading, color: .white, radius: 115)
-                CompassDirectionLabel(text: "غرب", baseAngle: 270, deviceHeading: deviceHeading, color: .white, radius: 115)
-            }
-            
-            // المركز مع التوهج الديناميكي
-            ZStack {
-                // التوهج الديناميكي (يتغير عند التوجيه الصحيح)
                 Circle()
                     .fill(
                         RadialGradient(
@@ -6913,7 +6907,6 @@ struct EnhancedCompassView: View {
                         )
                     )
                     .frame(width: 120, height: 120)
-                    .animation(.easeInOut(duration: 0.3), value: isPointingToQibla)
                 
                 Circle()
                     .fill(Color(hex: "0D1B2A"))
@@ -6925,21 +6918,17 @@ struct EnhancedCompassView: View {
                         lineWidth: 2
                     )
                     .frame(width: 70, height: 70)
-                    .animation(.easeInOut(duration: 0.3), value: isPointingToQibla)
                 
-                // أيقونة الكعبة
                 Text("🕋")
                     .font(.system(size: 35))
             }
             
-            // السهم المحسن - يدور حول مركز البوصلة للإشارة إلى القبلة
-            // anchor محسوب ليكون في مركز البوصلة بعد الـ offset
-            PremiumQiblaArrow(isPointingToQibla: isPointingToQibla)
-                .frame(width: 120, height: 120)
-                .offset(y: -115)
-                .rotationEffect(.degrees(arrowRotation), anchor: UnitPoint(x: 0.5, y: 0.5 + 115 / 120))
-                .animation(.spring(response: 0.1, dampingFraction: 0.8), value: arrowRotation)
+            // 4. السهم - يشير لاتجاه القبلة الفعلي
+            QiblaArrowView(isPointingToQibla: isPointingToQibla)
+                .rotationEffect(.degrees(arrowRotation))
+                .animation(.spring(response: 0.15, dampingFraction: 0.8), value: arrowRotation)
         }
+        .frame(width: compassSize + 40, height: compassSize + 40)
         .onAppear {
             if isPointingToQibla {
                 pulseScale = 1.05
@@ -6947,23 +6936,125 @@ struct EnhancedCompassView: View {
             }
         }
         .onChange(of: isPointingToQibla) { oldValue, newValue in
-            if newValue {
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    pulseScale = 1.05
-                    glowIntensity = 0.6
-                }
-            } else {
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    pulseScale = 1.0
-                    glowIntensity = 0.3
-                }
+            withAnimation(.easeInOut(duration: 0.5)) {
+                pulseScale = newValue ? 1.05 : 1.0
+                glowIntensity = newValue ? 0.6 : 0.3
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("البوصلة")
+        .accessibilityLabel("بوصلة القبلة")
         .accessibilityValue(isPointingToQibla ? "موجه للقبلة" : "غير موجه للقبلة")
     }
 }
+
+// MARK: - Compass Tick (علامة الدرجات)
+private struct CompassTick: View {
+    let degree: Int
+    
+    var body: some View {
+        Rectangle()
+            .fill(tickColor)
+            .frame(width: tickWidth, height: tickHeight)
+    }
+    
+    private var tickColor: Color {
+        if degree % 90 == 0 {
+            return Color(hex: "D4AF37")
+        } else if degree % 45 == 0 {
+            return Color.white.opacity(0.6)
+        } else if degree % 15 == 0 {
+            return Color.white.opacity(0.3)
+        } else {
+            return Color.white.opacity(0.15)
+        }
+    }
+    
+    private var tickWidth: CGFloat {
+        if degree % 90 == 0 { return 3 }
+        else if degree % 45 == 0 { return 2 }
+        else { return 1 }
+    }
+    
+    private var tickHeight: CGFloat {
+        if degree % 90 == 0 { return 20 }
+        else if degree % 45 == 0 { return 15 }
+        else if degree % 15 == 0 { return 10 }
+        else { return 5 }
+    }
+}
+
+// MARK: - Fixed Direction Label (اتجاه ثابت)
+private struct FixedDirectionLabel: View {
+    let text: String
+    let angle: Double
+    let radius: CGFloat
+    let isNorth: Bool
+    
+    var body: some View {
+        Text(text)
+            .font(.system(size: 18, weight: .bold, design: .rounded))
+            .foregroundColor(isNorth ? Color(hex: "FF6B6B") : .white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(0.7))
+            )
+            .offset(y: -radius)
+            .rotationEffect(.degrees(angle))
+            .rotationEffect(.degrees(-angle), anchor: .center)
+    }
+}
+
+// MARK: - Qibla Arrow View (سهم القبلة)
+private struct QiblaArrowView: View {
+    let isPointingToQibla: Bool
+    
+    private let arrowLength: CGFloat = 100
+    private let arrowWidth: CGFloat = 24
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // رأس السهم
+            Triangle()
+                .fill(
+                    LinearGradient(
+                        colors: isPointingToQibla ? [
+                            Color(hex: "00D26A"),
+                            Color(hex: "00FF7F")
+                        ] : [
+                            Color(hex: "FFD700"),
+                            Color(hex: "FFA500")
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: arrowWidth + 16, height: 30)
+                .shadow(color: isPointingToQibla ? Color(hex: "00D26A").opacity(0.6) : Color(hex: "FFD700").opacity(0.6), radius: 8)
+            
+            // جسم السهم
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: isPointingToQibla ? [
+                            Color(hex: "00D26A").opacity(0.9),
+                            Color(hex: "00D26A").opacity(0.6)
+                        ] : [
+                            Color(hex: "FFD700").opacity(0.9),
+                            Color(hex: "FFA500").opacity(0.6)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: 8, height: arrowLength - 30)
+                .shadow(color: isPointingToQibla ? Color(hex: "00D26A").opacity(0.4) : Color(hex: "FFD700").opacity(0.4), radius: 4)
+        }
+        .offset(y: -arrowLength / 2 - 35)
+    }
+}
+
 
 // MARK: - Enhanced Instructions View
 /// تعليمات محسنة للمستخدم
