@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UIKit
 
 /// Service for syncing user data with AWS backend
 final class SyncService: ObservableObject {
@@ -99,12 +100,13 @@ final class SyncService: ObservableObject {
     func getTasbih() async throws -> [TasbihCounter] {
         let data = try await apiRequest(method: "GET", path: "/tasbih")
         let response = try JSONDecoder().decode(TasbihResponse.self, from: data)
-        return response.counters
+        return response.counters.map { $0.toTasbihCounter() }
     }
     
     /// Save tasbih counter to server
     func saveTasbih(_ counter: TasbihCounter) async throws {
-        let body = try JSONEncoder().encode(counter)
+        let syncCounter = SyncTasbihCounter(from: counter)
+        let body = try JSONEncoder().encode(syncCounter)
         let _ = try await apiRequest(method: "POST", path: "/tasbih", body: body)
     }
     
@@ -200,7 +202,7 @@ final class SyncService: ObservableObject {
         
         if let tasbihData = defaults.data(forKey: "local_tasbih"),
            let tasbih = try? JSONDecoder().decode([TasbihCounter].self, from: tasbihData) {
-            data.tasbih = tasbih
+            data.tasbih = tasbih.map { SyncTasbihCounter(from: $0) }
         }
         
         return data
@@ -216,7 +218,8 @@ final class SyncService: ObservableObject {
             defaults.set(data, forKey: "local_favorites")
         }
         
-        if let data = try? JSONEncoder().encode(response.tasbih) {
+        let tasbihCounters = response.tasbih.map { $0.toTasbihCounter() }
+        if let data = try? JSONEncoder().encode(tasbihCounters) {
             defaults.set(data, forKey: "local_tasbih")
         }
     }
@@ -256,7 +259,7 @@ struct FavoritesResponse: Codable {
 }
 
 struct TasbihResponse: Codable {
-    let counters: [TasbihCounter]
+    let counters: [SyncTasbihCounter]
 }
 
 struct SyncRequest: Codable {
@@ -267,7 +270,7 @@ struct SyncRequest: Codable {
 struct SyncData: Codable {
     var settings: UserSettings?
     var favorites: [Favorite]?
-    var tasbih: [TasbihCounter]?
+    var tasbih: [SyncTasbihCounter]?
     var prayers: [PrayerLog]?
 }
 
@@ -284,7 +287,7 @@ struct PrayerLog: Codable {
 struct SyncResponse: Codable {
     let settings: UserSettings?
     let favorites: [Favorite]
-    let tasbih: [TasbihCounter]
+    let tasbih: [SyncTasbihCounter]
     let prayers: [PrayerLog]
     let syncedAt: String
 }
@@ -320,30 +323,27 @@ enum SyncError: LocalizedError {
     }
 }
 
-// MARK: - TasbihCounter Extension
+// MARK: - SyncTasbihCounter (for API communication)
 
-extension TasbihCounter: Codable {
-    enum CodingKeys: String, CodingKey {
-        case id = "counterId"
-        case title
-        case target
-        case current
+struct SyncTasbihCounter: Codable {
+    let counterId: String
+    let title: String
+    let target: Int
+    let current: Int
+    
+    init(from counter: TasbihCounter) {
+        self.counterId = counter.id.uuidString
+        self.title = counter.title
+        self.target = counter.target
+        self.current = counter.current
     }
     
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let idString = try container.decode(String.self, forKey: .id)
-        id = UUID(uuidString: idString) ?? UUID()
-        title = try container.decode(String.self, forKey: .title)
-        target = try container.decode(Int.self, forKey: .target)
-        current = try container.decode(Int.self, forKey: .current)
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id.uuidString, forKey: .id)
-        try container.encode(title, forKey: .title)
-        try container.encode(target, forKey: .target)
-        try container.encode(current, forKey: .current)
+    func toTasbihCounter() -> TasbihCounter {
+        TasbihCounter(
+            id: UUID(uuidString: counterId) ?? UUID(),
+            title: title,
+            target: target,
+            current: current
+        )
     }
 }
