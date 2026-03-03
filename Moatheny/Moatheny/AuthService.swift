@@ -7,8 +7,8 @@ final class AuthService: ObservableObject {
     // MARK: - Configuration
     
     private struct Config {
-        static let userPoolId = "eu-central-1_XXXXXXXXX" // TODO: Replace after deployment
-        static let clientId = "XXXXXXXXXXXXXXXXXXXXXXXXXX" // TODO: Replace after deployment
+        static let userPoolId = "eu-central-1_mqThjbgqC"
+        static let clientId = "6feqgak7g7al8hv76veckv5hhj"
         static let region = "eu-central-1"
         
         static var cognitoURL: URL {

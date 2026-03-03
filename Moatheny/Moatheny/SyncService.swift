@@ -8,7 +8,7 @@ final class SyncService: ObservableObject {
     // MARK: - Configuration
     
     private struct Config {
-        static let apiBaseURL = "https://XXXXXXXXXX.execute-api.eu-central-1.amazonaws.com/prod" // TODO: Replace after deployment
+        static let apiBaseURL = "https://9br8uxdood.execute-api.eu-central-1.amazonaws.com/prod"
     }
     
     // MARK: - Published Properties
