@@ -1,0 +1,80 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserdata/
+*.xcworkspace/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+!default.pbxuser
+!default.mode1v3
+!default.mode2v3
+!default.perspectivev3
+xcuserdata/
+
+# Swift Package Manager
+.build/
+Packages/
+Package.pins
+Package.resolved
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Thumbnails
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Archives
+*.ipa
+*.dSYM.zip
+*.dSYM
+fastlane/generated/
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Secrets & Environment
+.env
+.env.local
+*.pem
+*.key
+*.p12
+*.p8
+
+# AWS
+aws-backend/.aws-sam/
+aws-backend/node_modules/
+aws-backend/.build/
+aws-backend/packaged.yaml
+aws-backend/__pycache__/
+aws-backend/**/__pycache__/
+*.pyc
+
+# Cursor
+.cursor/
+
+# Plan files
+*.plan.md
+
+# Logs
+*.log
+logs/
