@@ -2148,33 +2148,23 @@ struct QiblaView: View {
                         .padding(.horizontal)
                     }
                     
-                    // مؤشرات الدقة والجودة
+                    // مؤشرات الدقة والجودة (مبسطة)
                     VStack(spacing: 12) {
-                        // مؤشر دقة البوصلة
-                        AccuracyIndicator(
-                            accuracy: compass.accuracy,
-                            level: AccuracyLevel.from(accuracy: compass.accuracy)
-                        )
-                        .padding(.horizontal)
+                        // مؤشر دقة البوصلة المبسط (رقم فقط)
+                        SimpleAccuracyIndicator(accuracy: compass.accuracy)
+                            .padding(.horizontal)
                         
-                        // مؤشر التشويش المغناطيسي
-                        if magneticInterference.hasInterference {
-                            MagneticInterferenceIndicator(
-                                hasInterference: magneticInterference.hasInterference,
-                                interferenceLevel: magneticInterference.level
+                        // مؤشر المعايرة المحسن (يظهر فقط عند الحاجة)
+                        if compass.calibrationNeeded && compass.error == nil {
+                            EnhancedCalibrationIndicator(
+                                calibrationNeeded: true,
+                                onCalibrate: {
+                                    showCalibrationHelp = true
+                                    DebugFileLogger.log(runId: "qibla-accuracy", hypothesisId: "Q5", location: "Views.swift:QiblaView", message: "Open calibration help", data: [:])
+                                }
                             )
                             .padding(.horizontal)
                         }
-                        
-                        // مؤشر المعايرة المحسن
-                        EnhancedCalibrationIndicator(
-                            calibrationNeeded: compass.calibrationNeeded && compass.error == nil,
-                            onCalibrate: {
-                                showCalibrationHelp = true
-                                DebugFileLogger.log(runId: "qibla-accuracy", hypothesisId: "Q5", location: "Views.swift:QiblaView", message: "Open calibration help", data: [:])
-                            }
-                        )
-                        .padding(.horizontal)
                     }
                     
                     // البوصلة المحسنة + سهم متحرك
@@ -2421,12 +2411,42 @@ struct QiblaView: View {
             
             let loc = CLLocation(latitude: correctedLat, longitude: correctedLon)
             
+            // =====================================================
+            // النظام الهجين: API (سحابي) + Cache + Local (محلي)
+            // =====================================================
+            do {
+                // محاولة جلب اتجاه القبلة من QiblaService (API + Cache)
+                let apiDirection = try await container.qibla.bearing(from: loc.coordinate)
+                
+                // التحقق من صحة النتيجة
+                if apiDirection >= 0 && apiDirection < 360 {
+                    await MainActor.run {
+                        qiblaDirection = apiDirection
+                        print("🌐 اتجاه القبلة من API/Cache: \(apiDirection)°")
+                    }
+                } else {
+                    // Fallback للحساب المحلي إذا كانت النتيجة غير صالحة
+                    await MainActor.run {
+                        qiblaDirection = QiblaCalculator.calculateQiblaDirection(
+                            from: loc.coordinate.latitude,
+                            longitude: loc.coordinate.longitude
+                        )
+                        print("📐 اتجاه القبلة من الحساب المحلي (API غير صالح): \(qiblaDirection)°")
+                    }
+                }
+            } catch {
+                // Fallback للحساب المحلي عند فشل API
+                await MainActor.run {
+                    qiblaDirection = QiblaCalculator.calculateQiblaDirection(
+                        from: loc.coordinate.latitude,
+                        longitude: loc.coordinate.longitude
+                    )
+                    print("⚠️ فشل API، استخدام الحساب المحلي: \(qiblaDirection)°")
+                }
+            }
+            
             await MainActor.run {
-                // استخدام QiblaCalculator للحساب الدقيق
-                qiblaDirection = QiblaCalculator.calculateQiblaDirection(
-                    from: loc.coordinate.latitude,
-                    longitude: loc.coordinate.longitude
-                )
+                // حساب المسافة (محلي دائماً)
                 distance = QiblaCalculator.calculateDistanceToKaaba(
                     from: loc.coordinate.latitude,
                     longitude: loc.coordinate.longitude
@@ -2456,7 +2476,7 @@ struct QiblaView: View {
                     runId: "ui-change",
                     hypothesisId: "Q1",
                     location: "Views.swift:updateQibla",
-                    message: "Computed qibla+distance",
+                    message: "Computed qibla+distance (hybrid)",
                     data: [
                         "originalLat": coord.latitude,
                         "originalLon": coord.longitude,
@@ -2466,7 +2486,8 @@ struct QiblaView: View {
                         "qiblaDeg": Int(qiblaDirection.rounded()),
                         "distKm": Int(distance.rounded()),
                         "headingDeg": Int(compass.heading.rounded()),
-                        "isPointing": isPointingToQibla
+                        "isPointing": isPointingToQibla,
+                        "source": "hybrid-api-cache-local"
                     ]
                 )
                 DebugFileLogger.log(
@@ -2588,14 +2609,15 @@ struct CompassDirectionLabel: View {
     /// - deviceHeading: اتجاه الجهاز من الشمال (0-360)
     /// - Returns: الزاوية النسبية لعرض التسمية على البوصلة
     ///
-    /// ## المنطق:
+    /// ## المنطق الصحيح:
     /// - البوصلة تعرض الاتجاهات الحقيقية في العالم
-    /// - عندما الجهاز موجه للشمال (heading=0): "شمال" يظهر في الأعلى
-    /// - عندما الجهاز يدور للشرق (heading=90): "شمال" يظهر على اليسار (لأن الشمال الآن على يسارك)
+    /// - عندما الجهاز موجه للشمال (heading=0): "شمال" يظهر في الأعلى (0°)
+    /// - عندما الجهاز يدور لليمين (heading=90، موجه للشرق): "شمال" يظهر على اليسار (270°)
     /// - الصيغة: adjustedAngle = baseAngle - deviceHeading
+    ///   - شمال (0°) مع heading=0°: adjustedAngle = 0 - 0 = 0° → الأعلى ✓
     ///   - شمال (0°) مع heading=90°: adjustedAngle = 0 - 90 = -90° → 270° → اليسار ✓
+    ///   - شرق (90°) مع heading=90°: adjustedAngle = 90 - 90 = 0° → الأعلى ✓
     private var adjustedAngle: Double {
-        // التحقق من القيم غير الصالحة
         guard baseAngle.isFinite, deviceHeading.isFinite else {
             return 0
         }
@@ -2607,26 +2629,34 @@ struct CompassDirectionLabel: View {
         return angle
     }
     
-    /// تحويل الزاوية إلى radians (محسوبة مرة واحدة لتحسين الأداء)
-    /// - في البوصلة: 0° = شمال (الأعلى)، 90° = شرق (اليمين)
-    /// - في الرياضيات: 0° = اليمين، 90° = الأعلى
+    /// تحويل الزاوية إلى radians لنظام SwiftUI
+    /// - في نظام البوصلة: 0° = شمال (أعلى)، 90° = شرق (يمين)، 180° = جنوب (أسفل)، 270° = غرب (يسار)
+    /// - في SwiftUI: نستخدم sin للـ X و cos للـ Y مع تعديل الإشارات
+    /// - الصيغة: radians = adjustedAngle * π/180 (بدون تحويل إضافي)
     private var radians: Double {
-        (Self.compassToMathOffset - adjustedAngle) * .pi / 180
+        adjustedAngle * .pi / 180
     }
     
     /// حساب موضع X على محيط الدائرة
+    /// - في نظام البوصلة: 0° = أعلى، 90° = يمين
+    /// - sin(0°) = 0 → X = 0 (مركز أفقياً) ✓
+    /// - sin(90°) = 1 → X = +radius (يمين) ✓
+    /// - sin(180°) = 0 → X = 0 (مركز أفقياً) ✓
+    /// - sin(270°) = -1 → X = -radius (يسار) ✓
     private var positionX: CGFloat {
         guard radius.isFinite, radius > 0 else { return 0 }
-        return cos(radians) * radius
+        return sin(radians) * radius
     }
     
     /// حساب موضع Y على محيط الدائرة
-    /// - ملاحظة: معكوس لأن y يزيد للأسفل في SwiftUI
-    /// - شمال (0°) → الأعلى → y = -radius
-    /// - جنوب (180°) → الأسفل → y = +radius
+    /// - في SwiftUI: y يزيد للأسفل
+    /// - cos(0°) = 1 → Y = -radius (أعلى) ✓
+    /// - cos(90°) = 0 → Y = 0 (مركز عمودياً) ✓
+    /// - cos(180°) = -1 → Y = +radius (أسفل) ✓
+    /// - cos(270°) = 0 → Y = 0 (مركز عمودياً) ✓
     private var positionY: CGFloat {
         guard radius.isFinite, radius > 0 else { return 0 }
-        return -sin(radians) * radius
+        return -cos(radians) * radius
     }
     
     // MARK: - Body
@@ -3046,10 +3076,12 @@ struct BeautifulQiblaCompass: View {
             }
             
             // سهم القبلة المحسّن
+            // الترتيب الصحيح: rotationEffect أولاً ثم offset
+            // هذا يجعل السهم يدور حول مركز البوصلة وليس حول مركزه الخاص
             BeautifulQiblaArrow(isPointingToQibla: isPointingToQibla)
                 .frame(width: 80, height: 140)
                 .offset(y: -(outerRingRadius - 30))
-                .rotationEffect(.degrees(arrowRotation), anchor: .center)
+                .rotationEffect(.degrees(arrowRotation), anchor: UnitPoint(x: 0.5, y: 0.5 + (outerRingRadius - 30) / 140))
                 .animation(.spring(response: 0.15, dampingFraction: 0.75), value: arrowRotation)
         }
         .frame(width: compassSize, height: compassSize)
@@ -6456,6 +6488,39 @@ extension AccuracyLevel {
     }
 }
 
+// MARK: - Simple Accuracy Indicator (مبسط)
+/// مؤشر دقة البوصلة المبسط - يعرض الرقم فقط بدون شريط تقدم أو تقييم
+struct SimpleAccuracyIndicator: View {
+    let accuracy: Double
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "location.north.circle")
+                .foregroundColor(Color(hex: "D4AF37"))
+                .font(.caption)
+            
+            Text("دقة البوصلة")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.7))
+            
+            Spacer()
+            
+            if accuracy > 0 {
+                Text("±\(accuracy, specifier: "%.0f")°")
+                    .font(.caption.bold())
+                    .foregroundColor(.white)
+            } else {
+                Text("جاري القياس...")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(12)
+    }
+}
+
 // MARK: - Magnetic Interference Indicator
 /// مؤشر التشويش المغناطيسي
 struct MagneticInterferenceIndicator: View {
@@ -6868,11 +6933,11 @@ struct EnhancedCompassView: View {
             }
             
             // السهم المحسن - يدور حول مركز البوصلة للإشارة إلى القبلة
-            // الترتيب الصحيح: offset أولاً ثم rotationEffect حول مركز البوصلة
+            // anchor محسوب ليكون في مركز البوصلة بعد الـ offset
             PremiumQiblaArrow(isPointingToQibla: isPointingToQibla)
                 .frame(width: 120, height: 120)
-                .offset(y: -115) // نقل السهم للأعلى
-                .rotationEffect(.degrees(arrowRotation), anchor: .center) // دوران حول مركز البوصلة
+                .offset(y: -115)
+                .rotationEffect(.degrees(arrowRotation), anchor: UnitPoint(x: 0.5, y: 0.5 + 115 / 120))
                 .animation(.spring(response: 0.1, dampingFraction: 0.8), value: arrowRotation)
         }
         .onAppear {
