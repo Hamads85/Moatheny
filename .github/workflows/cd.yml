@@ -1,0 +1,373 @@
+name: CD Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'testflight'
+        type: choice
+        options:
+          - build-only
+          - testflight
+          - appstore
+
+env:
+  SCHEME: 'Moatheny'
+  PROJECT: 'Moatheny/Moatheny.xcodeproj'
+  BUNDLE_ID: 'com.YourMangaApp.Moatheny'
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select best Xcode version
+        run: |
+          set -e
+          echo "Available Xcode installations:"
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+          SELECTED=""
+          for ver in 16.2 16.1 16.0; do
+            for path in "/Applications/Xcode_${ver}.app" "/Applications/Xcode_${ver}_Release_Candidate.app"; do
+              if [ -d "$path" ]; then
+                SELECTED="$path/Contents/Developer"
+                echo "::notice::Selected Xcode ${ver}"
+                break 2
+              fi
+            done
+          done
+          if [ -z "$SELECTED" ]; then
+            SELECTED="/Applications/Xcode.app/Contents/Developer"
+            echo "::notice::Using default Xcode"
+          fi
+          sudo xcode-select -switch "$SELECTED"
+          xcodebuild -version
+          echo "Available simulator runtimes:"
+          xcrun simctl list runtimes 2>/dev/null || true
+
+      - name: Run Xcode first launch
+        run: xcodebuild -runFirstLaunch || true
+
+      - name: Cache SPM packages
+        uses: actions/cache@v4
+        with:
+          path: build/DerivedData/SourcePackages
+          key: ${{ runner.os }}-spm-xcode-${{ hashFiles('**/*.pbxproj') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-xcode-
+
+      - name: Determine signing strategy
+        id: signing
+        env:
+          HAS_CERT: ${{ secrets.CERTIFICATE_BASE64 != '' && secrets.PROVISIONING_PROFILE_BASE64 != '' }}
+        run: |
+          set -e
+          if [ "$HAS_CERT" = "true" ]; then
+            echo "mode=manual" >> $GITHUB_OUTPUT
+            echo "::notice::Signing mode: MANUAL (certificate + provisioning profile)"
+          else
+            echo "mode=automatic" >> $GITHUB_OUTPUT
+            echo "::notice::Signing mode: AUTOMATIC (API key + allowProvisioningUpdates)"
+          fi
+
+      - name: Validate required secrets
+        env:
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          HAS_ASC_KEY: ${{ secrets.ASC_API_KEY_BASE64 != '' }}
+          HAS_CERT: ${{ secrets.CERTIFICATE_BASE64 != '' }}
+          HAS_CERT_PASS: ${{ secrets.CERTIFICATE_PASSWORD != '' }}
+          HAS_PROFILE: ${{ secrets.PROVISIONING_PROFILE_BASE64 != '' }}
+          MODE: ${{ steps.signing.outputs.mode }}
+        run: |
+          set -e
+          [ -z "$TEAM_ID" ] && { echo "::error::TEAM_ID secret is required"; exit 1; }
+
+          if [ "$MODE" = "manual" ]; then
+            [ "$HAS_CERT" != "true" ] && { echo "::error::CERTIFICATE_BASE64 required for manual signing"; exit 1; }
+            [ "$HAS_CERT_PASS" != "true" ] && { echo "::error::CERTIFICATE_PASSWORD required for manual signing"; exit 1; }
+            [ "$HAS_PROFILE" != "true" ] && { echo "::error::PROVISIONING_PROFILE_BASE64 required for manual signing"; exit 1; }
+          else
+            [ -z "$ASC_KEY_ID" ] && { echo "::error::ASC_KEY_ID required for automatic signing"; exit 1; }
+            [ -z "$ASC_ISSUER_ID" ] && { echo "::error::ASC_ISSUER_ID required for automatic signing"; exit 1; }
+            [ "$HAS_ASC_KEY" != "true" ] && { echo "::error::ASC_API_KEY_BASE64 required for automatic signing"; exit 1; }
+          fi
+
+          NEEDS_UPLOAD=false
+          [ "${{ github.event_name }}" = "push" ] && NEEDS_UPLOAD=true
+          [ "${{ github.event.inputs.environment }}" = "testflight" ] && NEEDS_UPLOAD=true
+          [ "${{ github.event.inputs.environment }}" = "appstore" ] && NEEDS_UPLOAD=true
+          if [ "$NEEDS_UPLOAD" = "true" ]; then
+            [ -z "$ASC_KEY_ID" ] && { echo "::error::ASC_KEY_ID required for upload"; exit 1; }
+            [ -z "$ASC_ISSUER_ID" ] && { echo "::error::ASC_ISSUER_ID required for upload"; exit 1; }
+            [ "$HAS_ASC_KEY" != "true" ] && { echo "::error::ASC_API_KEY_BASE64 required for upload"; exit 1; }
+          fi
+          echo "::notice::Secret validation passed"
+
+      - name: Setup App Store Connect API Key
+        env:
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          set -e
+          echo "::group::Setup API Key"
+          mkdir -p "$GITHUB_WORKSPACE/private_keys"
+          P8_PATH="$GITHUB_WORKSPACE/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "$ASC_API_KEY_BASE64" | tr -d '\n\r\t ' | base64 --decode > "$P8_PATH"
+          chmod 600 "$P8_PATH"
+          head -1 "$P8_PATH" | grep -q "BEGIN PRIVATE KEY" || { echo "::error::Invalid P8 header"; exit 1; }
+          tail -1 "$P8_PATH" | grep -q "END PRIVATE KEY" || { echo "::error::Invalid P8 footer"; exit 1; }
+          P8_SIZE=$(wc -c < "$P8_PATH" | tr -d ' ')
+          [ "$P8_SIZE" -lt 200 ] && { echo "::error::P8 file too small (${P8_SIZE} bytes)"; exit 1; }
+          echo "P8_PATH=$P8_PATH" >> $GITHUB_ENV
+          mkdir -p ~/private_keys
+          cp "$P8_PATH" ~/private_keys/
+          echo "::notice::P8 key validated (${P8_SIZE} bytes)"
+          echo "::endgroup::"
+
+      - name: Install signing certificate and profile
+        if: steps.signing.outputs.mode == 'manual'
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -e
+          echo "::group::Install manual signing assets"
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          printf '%s' "$CERTIFICATE_BASE64" | tr -d '\n\r\t ' | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "$CERT_PATH"
+
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          printf '%s' "$PROVISIONING_PROFILE_BASE64" | tr -d '\n\r\t ' | base64 --decode > "$PROFILE_PATH"
+          PROFILE_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw -)
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
+          rm -f "$PROFILE_PATH"
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
+          echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
+          echo "::notice::Certificate and profile installed (UUID: $PROFILE_UUID)"
+          echo "::endgroup::"
+
+      - name: Increment build number
+        run: |
+          set -e
+          BUILD_NUMBER=$(git rev-list --count HEAD)
+          cd "Moatheny"
+          agvtool new-version -all "$BUILD_NUMBER"
+          cd ..
+          echo "::notice::Build number set to $BUILD_NUMBER"
+
+      - name: Archive app
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
+        run: |
+          set -e
+          mkdir -p build
+          echo "::group::xcodebuild archive ($SIGNING_MODE)"
+
+          if [ "$SIGNING_MODE" = "manual" ]; then
+            xcodebuild archive \
+              -project "${{ env.PROJECT }}" \
+              -scheme "${{ env.SCHEME }}" \
+              -destination "generic/platform=iOS" \
+              -archivePath build/Moatheny.xcarchive \
+              -derivedDataPath build/DerivedData \
+              -skipPackagePluginValidation \
+              CODE_SIGN_STYLE=Manual \
+              DEVELOPMENT_TEAM="$TEAM_ID" \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              ENABLE_PREVIEWS=NO
+          else
+            xcodebuild archive \
+              -project "${{ env.PROJECT }}" \
+              -scheme "${{ env.SCHEME }}" \
+              -destination "generic/platform=iOS" \
+              -archivePath build/Moatheny.xcarchive \
+              -derivedDataPath build/DerivedData \
+              -skipPackagePluginValidation \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath "$P8_PATH" \
+              -authenticationKeyID "$ASC_KEY_ID" \
+              -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+              CODE_SIGN_STYLE=Automatic \
+              DEVELOPMENT_TEAM="$TEAM_ID" \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              ENABLE_PREVIEWS=NO || {
+                echo ""
+                echo "::warning::Automatic signing during archive failed (likely certificate limit)."
+                echo "::notice::Retrying archive without signing — export step will handle code signing."
+                xcodebuild archive \
+                  -project "${{ env.PROJECT }}" \
+                  -scheme "${{ env.SCHEME }}" \
+                  -destination "generic/platform=iOS" \
+                  -archivePath build/Moatheny.xcarchive \
+                  -derivedDataPath build/DerivedData \
+                  -skipPackagePluginValidation \
+                  CODE_SIGNING_REQUIRED=NO \
+                  CODE_SIGNING_ALLOWED=NO \
+                  COMPILER_INDEX_STORE_ENABLE=NO \
+                  ENABLE_PREVIEWS=NO || {
+                    echo "::error::Archive failed even without signing."
+                    echo "::error::Add secrets CERTIFICATE_BASE64, CERTIFICATE_PASSWORD, PROVISIONING_PROFILE_BASE64 for manual signing."
+                    exit 1
+                  }
+              }
+          fi
+          echo "::endgroup::"
+
+      - name: Export IPA
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
+        run: |
+          set -e
+          echo "::group::Generate ExportOptions.plist"
+          mkdir -p build/export
+          {
+          echo '<?xml version="1.0" encoding="UTF-8"?>'
+          echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+          echo '<plist version="1.0">'
+          echo '<dict>'
+          echo '  <key>method</key>'
+          echo '  <string>app-store-connect</string>'
+          echo '  <key>teamID</key>'
+          echo "  <string>${TEAM_ID}</string>"
+          echo '  <key>uploadSymbols</key>'
+          echo '  <true/>'
+          if [ "$SIGNING_MODE" = "manual" ]; then
+          echo '  <key>signingStyle</key>'
+          echo '  <string>manual</string>'
+          echo '  <key>provisioningProfiles</key>'
+          echo '  <dict>'
+          echo "    <key>${{ env.BUNDLE_ID }}</key>"
+          echo "    <string>${PROFILE_UUID}</string>"
+          echo '  </dict>'
+          else
+          echo '  <key>signingStyle</key>'
+          echo '  <string>automatic</string>'
+          fi
+          echo '</dict>'
+          echo '</plist>'
+          } > build/ExportOptions.plist
+          echo "ExportOptions.plist:"
+          cat build/ExportOptions.plist
+          echo "::endgroup::"
+
+          echo "::group::xcodebuild exportArchive"
+          if [ "$SIGNING_MODE" = "manual" ]; then
+            xcodebuild -exportArchive \
+              -archivePath build/Moatheny.xcarchive \
+              -exportPath build/export \
+              -exportOptionsPlist build/ExportOptions.plist
+          else
+            xcodebuild -exportArchive \
+              -archivePath build/Moatheny.xcarchive \
+              -exportPath build/export \
+              -exportOptionsPlist build/ExportOptions.plist \
+              -allowProvisioningUpdates \
+              -authenticationKeyPath "$P8_PATH" \
+              -authenticationKeyID "$ASC_KEY_ID" \
+              -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          fi
+          echo "::endgroup::"
+          echo "Exported files:"
+          ls -la build/export/
+
+      - name: Upload to TestFlight
+        if: github.event_name == 'push' || github.event.inputs.environment == 'testflight'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -e
+          IPA_PATH="build/export/Moatheny.ipa"
+          [ ! -f "$IPA_PATH" ] && IPA_PATH=$(find build/export -name "*.ipa" -print -quit)
+          [ -z "$IPA_PATH" ] && { echo "::error::No IPA found"; ls -la build/export/; exit 1; }
+
+          echo "::group::Upload to TestFlight"
+          for i in 1 2 3; do
+            echo "Attempt $i/3..."
+            if xcrun altool --upload-app -f "$IPA_PATH" -t ios \
+              --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"; then
+              echo "::notice::TestFlight upload succeeded!"
+              break
+            fi
+            [ $i -eq 3 ] && { echo "::error::Upload failed after 3 attempts"; exit 1; }
+            echo "Retrying in 30s..."
+            sleep 30
+          done
+          echo "::endgroup::"
+
+      - name: Upload to App Store
+        if: github.event.inputs.environment == 'appstore'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -e
+          IPA_PATH="build/export/Moatheny.ipa"
+          [ ! -f "$IPA_PATH" ] && IPA_PATH=$(find build/export -name "*.ipa" -print -quit)
+          [ -z "$IPA_PATH" ] && { echo "::error::No IPA found"; exit 1; }
+
+          echo "::group::Upload to App Store"
+          for i in 1 2 3; do
+            echo "Attempt $i/3..."
+            if xcrun altool --upload-app -f "$IPA_PATH" -t ios \
+              --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"; then
+              echo "::notice::App Store upload succeeded!"
+              break
+            fi
+            [ $i -eq 3 ] && { echo "::error::Upload failed after 3 attempts"; exit 1; }
+            echo "Retrying in 30s..."
+            sleep 30
+          done
+          echo "::endgroup::"
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: build-artifacts
+          path: build/export/
+          retention-days: 90
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf "$GITHUB_WORKSPACE/private_keys" ~/private_keys 2>/dev/null || true
+          if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "${KEYCHAIN_PATH:-}" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          fi

@@ -1,10 +1,6 @@
 name: CI Pipeline
 
 on:
-  push:
-    branches:
-      - main
-      - develop
   pull_request:
     branches:
       - main
@@ -35,12 +31,6 @@ jobs:
           key: ${{ runner.os }}-derived-data-${{ hashFiles('**/*.swift') }}
           restore-keys: |
             ${{ runner.os }}-derived-data-
-            
-      - name: Resolve Swift packages
-        run: |
-          xcodebuild -resolvePackageDependencies \
-            -project "Moatheny/Moatheny.xcodeproj" \
-            -scheme "Moatheny"
             
       - name: Build for iOS Simulator
         run: |
