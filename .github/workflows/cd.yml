@@ -24,7 +24,7 @@ env:
 jobs:
   build-and-deploy:
     name: Build & Deploy
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
 
     steps:
@@ -39,11 +39,11 @@ jobs:
           echo "Available Xcode installations:"
           ls -d /Applications/Xcode*.app 2>/dev/null || true
           SELECTED=""
-          for ver in 16.2 16.1 16.0; do
-            for path in "/Applications/Xcode_${ver}.app" "/Applications/Xcode_${ver}_Release_Candidate.app"; do
+          for ver in 26.3 26.2 26.1.1 26.0.1 26.0; do
+            for path in "/Applications/Xcode_${ver}.app" "/Applications/Xcode_${ver}_Release_Candidate_2.app"; do
               if [ -d "$path" ]; then
                 SELECTED="$path/Contents/Developer"
-                echo "::notice::Selected Xcode ${ver}"
+                echo "::notice::Selected Xcode ${ver} (iOS 26 SDK)"
                 break 2
               fi
             done
