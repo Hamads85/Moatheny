@@ -6844,7 +6844,6 @@ struct EnhancedCompassView: View {
     let isPointingToQibla: Bool    // هل الجهاز موجه للقبلة
     let deviceHeading: Double      // اتجاه الجهاز الحالي
     private let lockThreshold: Double = 7      // نافذة تثبيت
-    private let offsetDegrees: Double = 5      // إزاحة بسيطة لليمين
     
     @State private var pulseScale: CGFloat = 1.0
     @State private var glowIntensity: Double = 0.3
@@ -6966,7 +6965,7 @@ struct EnhancedCompassView: View {
     
     // MARK: - Helpers
     private var displayedArrowRotation: Double {
-        let normalized = normalizeAngle(arrowRotation + offsetDegrees)
+        let normalized = normalizeAngle(arrowRotation)
         let diff = shortestDelta(toZero: normalized)
         if abs(diff) <= lockThreshold { return 0 }
         return normalized
