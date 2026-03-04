@@ -2058,7 +2058,7 @@ struct QiblaView: View {
     var isPointingToQibla: Bool {
         let diff = abs(normalizeAngle(compass.heading - qiblaDirection))
         let pointing = (diff < 7 || diff > 353)
-        let accuracyOk = (compass.accuracy < 0) || (compass.accuracy <= 15)
+        let accuracyOk = (compass.accuracy < 0) || (compass.accuracy <= 25)
         return pointing && accuracyOk && !compass.calibrationNeeded
     }
     
