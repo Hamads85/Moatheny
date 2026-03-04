@@ -89,6 +89,7 @@ final class CompassService: NSObject, ObservableObject {
     private let adaptiveUpdateRate = AdaptiveUpdateRateManager()
     private let filterProcessingQueue = DispatchQueue(label: "com.moatheny.compass.filter", qos: .userInitiated)
     private var isPerformanceMonitoringEnabled = true
+    private var lastPublishTime: TimeInterval = 0 // للحد من معدل التحديث إلى ~10Hz
     
     // MARK: - Initialization
     override init() {
@@ -749,6 +750,11 @@ final class CompassService: NSObject, ObservableObject {
     private func ingestHeading(_ headingValue: Double, source: String, startTime: Date? = nil) {
         // تسجيل وقت بدء المعالجة للأداء
         let _ = startTime ?? Date()
+        
+        // حد أقصى لمعدل التحديث (~10Hz) لمنع التذبذب واستهلاك البطارية
+        let now = Date().timeIntervalSince1970
+        if now - lastPublishTime < 0.1 { return }
+        lastPublishTime = now
         
         rawHeading = headingValue
         

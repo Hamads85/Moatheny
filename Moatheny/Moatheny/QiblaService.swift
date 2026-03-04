@@ -30,37 +30,48 @@ final class QiblaService {
     
     // MARK: - Public Methods
     
-    /// جلب اتجاه القبلة مع دعم API و caching و fallback للحساب المحلي
-    /// - Parameter location: موقع المستخدم
-    /// - Returns: اتجاه القبلة بالدرجات (0-360، حيث 0 = الشمال)
-    func bearing(from location: CLLocationCoordinate2D) async throws -> Double {
-        // 1. التحقق من الكاش أولاً
+    // MARK: - Models
+    enum Source: String {
+        case api
+        case cache
+        case gpsFallback
+    }
+    
+    struct QiblaResult {
+        let bearing: Double
+        let distance: Double
+        let source: Source
+        let isStale: Bool
+    }
+    
+    /// جلب اتجاه القبلة مع دعم API أولاً + Cache + GPS fallback
+    func fetchQibla(for location: CLLocationCoordinate2D) async -> QiblaResult {
+        let distanceToKaaba = distance(from: location)
+        
+        // 1) كاش حديث
         if let cached = loadCachedDirection(for: location) {
-            return cached
+            return QiblaResult(bearing: cached.direction, distance: distanceToKaaba, source: cached.fromCache ? .cache : .api, isStale: cached.isStale)
         }
         
-        // 2. محاولة جلب من API مع timeout قصير
+        // 2) API أساسي
         do {
             let direction = try await withTimeout(seconds: 5) { [self] in
                 try await self.api.fetchQiblaDirection(latitude: location.latitude, longitude: location.longitude)
             }
-            
-            // حفظ في الكاش
-            saveCachedDirection(direction, for: location)
-            
-            return direction
+            saveCachedDirection(direction, for: location, fromCache: false)
+            return QiblaResult(bearing: direction, distance: distanceToKaaba, source: .api, isStale: false)
         } catch {
-            // 3. Fallback: استخدام الحساب المحلي
             print("⚠️ فشل جلب اتجاه القبلة من API: \(error.localizedDescription)")
-            print("📐 استخدام الحساب المحلي كـ fallback")
-            
             let localDirection = calculateLocalBearing(from: location)
-            
-            // حفظ الحساب المحلي في الكاش لتجنب إعادة الحساب
-            saveCachedDirection(localDirection, for: location)
-            
-            return localDirection
+            saveCachedDirection(localDirection, for: location, fromCache: true)
+            return QiblaResult(bearing: localDirection, distance: distanceToKaaba, source: .gpsFallback, isStale: false)
         }
+    }
+    
+    /// متوافق مع الواجهات القديمة (bearing فقط)
+    func bearing(from location: CLLocationCoordinate2D) async throws -> Double {
+        let result = await fetchQibla(for: location)
+        return result.bearing
     }
     
     /// حساب اتجاه القبلة محلياً (للـ fallback)
@@ -126,10 +137,11 @@ final class QiblaService {
         let latitude: Double
         let longitude: Double
         let timestamp: TimeInterval
+        let fromCache: Bool
     }
     
     /// تحميل اتجاه القبلة من الكاش
-    private func loadCachedDirection(for location: CLLocationCoordinate2D) -> Double? {
+    private func loadCachedDirection(for location: CLLocationCoordinate2D) -> (direction: Double, fromCache: Bool, isStale: Bool)? {
         let key = cacheKey(for: location)
         
         guard let cached: CachedQiblaData = try? cache.load(CachedQiblaData.self, named: key) else {
@@ -138,8 +150,8 @@ final class QiblaService {
         
         // التحقق من صلاحية الكاش
         let age = Date().timeIntervalSince1970 - cached.timestamp
-        guard age < cacheValidityDuration else {
-            // الكاش منتهي الصلاحية - حذفه
+        let isStale = age >= cacheValidityDuration
+        if isStale {
             try? FileManager.default.removeItem(atPath: FilePaths.cached(key).path)
             return nil
         }
@@ -151,17 +163,18 @@ final class QiblaService {
             return nil
         }
         
-        return cached.direction
+        return (cached.direction, cached.fromCache, isStale)
     }
     
     /// حفظ اتجاه القبلة في الكاش
-    private func saveCachedDirection(_ direction: Double, for location: CLLocationCoordinate2D) {
+    private func saveCachedDirection(_ direction: Double, for location: CLLocationCoordinate2D, fromCache: Bool) {
         let key = cacheKey(for: location)
         let data = CachedQiblaData(
             direction: direction,
             latitude: location.latitude,
             longitude: location.longitude,
-            timestamp: Date().timeIntervalSince1970
+            timestamp: Date().timeIntervalSince1970,
+            fromCache: fromCache
         )
         
         try? cache.store(data, named: key)

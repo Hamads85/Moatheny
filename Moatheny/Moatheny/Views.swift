@@ -3,6 +3,17 @@ import CoreLocation
 import MapKit
 import UIKit
 
+// MARK: - Qibla Theme (Dark-Blue & Gold Luxury)
+private enum QiblaTheme {
+    static let background = Color(hex: "0A1024")
+    static let surface = Color(hex: "0F1833").opacity(0.92)
+    static let accent = Color(hex: "D4AF37")
+    static let accentStrong = Color(hex: "00D26A")
+    static let textPrimary = Color.white
+    static let textSecondary = Color.white.opacity(0.7)
+    static let stroke = Color.white.opacity(0.12)
+}
+
 // MARK: - Root Tab View
 struct RootTabView: View {
     var body: some View {
@@ -2019,6 +2030,8 @@ struct QiblaView: View {
     
     @State private var qiblaDirection: Double = 0
     @State private var distance: Double = 0
+    @State private var qiblaSource: QiblaService.Source = .api
+    @State private var qiblaIsStale: Bool = false
     @State private var isCalculating = false
     @State private var lastUpdate: Date?
     @State private var showCalibrationHelp = false
@@ -2073,11 +2086,10 @@ struct QiblaView: View {
     var body: some View {
         ZStack {
             // خلفية متدرجة
-            RadialGradient(
-                colors: [Color(hex: "0D1B2A"), Color(hex: "1B263B"), Color(hex: "0D1B2A")],
-                center: .center,
-                startRadius: 0,
-                endRadius: 500
+            LinearGradient(
+                colors: [QiblaTheme.background, Color(hex: "0F1A35")],
+                startPoint: .top,
+                endPoint: .bottom
             )
             .ignoresSafeArea()
             
@@ -2164,8 +2176,17 @@ struct QiblaView: View {
                         .padding(.horizontal)
                     }
                     
-                    // مؤشرات الدقة والجودة (مبسطة)
+                    // مصدر البيانات + مؤشرات الدقة
                     VStack(spacing: 12) {
+                        HStack {
+                            SourceBadge(source: qiblaSource, isStale: qiblaIsStale)
+                            Spacer()
+                            if isCalculating {
+                                ProgressView().tint(QiblaTheme.accent)
+                            }
+                        }
+                        .padding(.horizontal)
+                        
                         // مؤشر دقة البوصلة المبسط (رقم فقط)
                         SimpleAccuracyIndicator(accuracy: compass.accuracy)
                             .padding(.horizontal)
@@ -2195,17 +2216,20 @@ struct QiblaView: View {
                     VStack(spacing: 12) {
                         Text("اتجاه القبلة")
                             .font(.headline)
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(QiblaTheme.textSecondary)
                         
                         Text("\(qiblaDirection, specifier: "%.1f")°")
                             .font(.system(size: 48, weight: .bold, design: .rounded))
-                            .foregroundColor(Color(hex: "D4AF37"))
+                            .foregroundColor(QiblaTheme.accent)
                         
                         Text(container.qibla.directionName(for: qiblaDirection))
                             .font(.title2.bold())
-                            .foregroundColor(.white)
+                            .foregroundColor(QiblaTheme.textPrimary)
                         
-                        // تم نقل مؤشر الدقة إلى قسم منفصل أعلاه
+                        Text("وجّه الهاتف حتى يتحول السهم إلى الأخضر. في حال ضعف الدقة، أدر الجهاز بشكل الرقم 8 أو ابتعد عن مصادر المعادن.")
+                            .font(.footnote)
+                            .foregroundColor(QiblaTheme.textSecondary)
+                            .multilineTextAlignment(.center)
                     }
                     .padding()
                     
@@ -2428,45 +2452,15 @@ struct QiblaView: View {
             let loc = CLLocation(latitude: correctedLat, longitude: correctedLon)
             
             // =====================================================
-            // النظام الهجين: API (سحابي) + Cache + Local (محلي)
+            // النظام الهجين: API أولاً + Cache + GPS fallback
             // =====================================================
-            do {
-                // محاولة جلب اتجاه القبلة من QiblaService (API + Cache)
-                let apiDirection = try await container.qibla.bearing(from: loc.coordinate)
-                
-                // التحقق من صحة النتيجة
-                if apiDirection >= 0 && apiDirection < 360 {
-                    await MainActor.run {
-                        qiblaDirection = apiDirection
-                        print("🌐 اتجاه القبلة من API/Cache: \(apiDirection)°")
-                    }
-                } else {
-                    // Fallback للحساب المحلي إذا كانت النتيجة غير صالحة
-                    await MainActor.run {
-                        qiblaDirection = QiblaCalculator.calculateQiblaDirection(
-                            from: loc.coordinate.latitude,
-                            longitude: loc.coordinate.longitude
-                        )
-                        print("📐 اتجاه القبلة من الحساب المحلي (API غير صالح): \(qiblaDirection)°")
-                    }
-                }
-            } catch {
-                // Fallback للحساب المحلي عند فشل API
-                await MainActor.run {
-                    qiblaDirection = QiblaCalculator.calculateQiblaDirection(
-                        from: loc.coordinate.latitude,
-                        longitude: loc.coordinate.longitude
-                    )
-                    print("⚠️ فشل API، استخدام الحساب المحلي: \(qiblaDirection)°")
-                }
-            }
+            let result = await container.qibla.fetchQibla(for: loc.coordinate)
             
             await MainActor.run {
-                // حساب المسافة (محلي دائماً)
-                distance = QiblaCalculator.calculateDistanceToKaaba(
-                    from: loc.coordinate.latitude,
-                    longitude: loc.coordinate.longitude
-                )
+                qiblaDirection = result.bearing
+                distance = result.distance
+                qiblaSource = result.source
+                qiblaIsStale = result.isStale
                 lastUpdate = Date()
                 
                 // Logging مفصل للتشخيص
@@ -6512,27 +6506,31 @@ struct SimpleAccuracyIndicator: View {
     var body: some View {
         HStack {
             Image(systemName: "location.north.circle")
-                .foregroundColor(Color(hex: "D4AF37"))
+                .foregroundColor(QiblaTheme.accent)
                 .font(.caption)
             
             Text("دقة البوصلة")
                 .font(.caption)
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(QiblaTheme.textSecondary)
             
             Spacer()
             
             if accuracy > 0 {
                 Text("±\(accuracy, specifier: "%.0f")°")
                     .font(.caption.bold())
-                    .foregroundColor(.white)
+                    .foregroundColor(QiblaTheme.textPrimary)
             } else {
                 Text("جاري القياس...")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(QiblaTheme.textSecondary)
             }
         }
         .padding(12)
-        .background(Color.white.opacity(0.08))
+        .background(QiblaTheme.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(QiblaTheme.stroke, lineWidth: 1)
+        )
         .cornerRadius(12)
     }
 }
@@ -6845,6 +6843,8 @@ struct EnhancedCompassView: View {
     let arrowRotation: Double      // زاوية دوران البوصلة (qiblaDirection - deviceHeading)
     let isPointingToQibla: Bool    // هل الجهاز موجه للقبلة
     let deviceHeading: Double      // اتجاه الجهاز الحالي
+    private let lockThreshold: Double = 7      // نافذة تثبيت
+    private let offsetDegrees: Double = 5      // إزاحة بسيطة لليمين
     
     @State private var pulseScale: CGFloat = 1.0
     @State private var glowIntensity: Double = 0.3
@@ -6890,8 +6890,8 @@ struct EnhancedCompassView: View {
                 CompassDirectionText(text: "S", angle: 180, radius: innerRingSize / 2 - 35, isNorth: false)
                 CompassDirectionText(text: "W", angle: 270, radius: innerRingSize / 2 - 35, isNorth: false)
             }
-            .rotationEffect(.degrees(-arrowRotation))
-            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: arrowRotation)
+            .rotationEffect(.degrees(-displayedArrowRotation))
+            .animation(compassAnimation, value: displayedArrowRotation)
             
             // 3. المركز (الكعبة)
             ZStack {
@@ -6962,6 +6962,73 @@ struct EnhancedCompassView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("بوصلة القبلة")
         .accessibilityValue(isPointingToQibla ? "موجه للقبلة" : "غير موجه للقبلة")
+    }
+    
+    // MARK: - Helpers
+    private var displayedArrowRotation: Double {
+        let normalized = normalizeAngle(arrowRotation + offsetDegrees)
+        let diff = shortestDelta(toZero: normalized)
+        if abs(diff) <= lockThreshold { return 0 }
+        return normalized
+    }
+    
+    private var compassAnimation: Animation? {
+        let diff = shortestDelta(toZero: normalizeAngle(arrowRotation))
+        return abs(diff) <= lockThreshold ? nil : .spring(response: 0.25, dampingFraction: 0.7)
+    }
+    
+    private func normalizeAngle(_ angle: Double) -> Double {
+        var a = angle.truncatingRemainder(dividingBy: 360)
+        if a < 0 { a += 360 }
+        return a
+    }
+    
+    private func shortestDelta(toZero angle: Double) -> Double {
+        var delta = angle
+        if delta > 180 { delta -= 360 }
+        if delta < -180 { delta += 360 }
+        return delta
+    }
+}
+
+// MARK: - Source Badge
+private struct SourceBadge: View {
+    let source: QiblaService.Source
+    let isStale: Bool
+    
+    private var text: String {
+        switch source {
+        case .api: return "المصدر: API القبلة"
+        case .cache: return isStale ? "المصدر: كاش قديم" : "المصدر: كاش"
+        case .gpsFallback: return "المصدر: GPS (بديل)"
+        }
+    }
+    
+    private var color: Color {
+        switch source {
+        case .api: return QiblaTheme.accentStrong
+        case .cache: return isStale ? .orange : QiblaTheme.accent
+        case .gpsFallback: return .orange
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 10, height: 10)
+            Text(text)
+                .font(.caption.bold())
+                .foregroundColor(QiblaTheme.textPrimary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(QiblaTheme.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(QiblaTheme.stroke, lineWidth: 1)
+        )
+        .cornerRadius(12)
     }
 }
 
