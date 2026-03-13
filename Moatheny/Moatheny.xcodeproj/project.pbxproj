@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		74656D705F616468616E3033 /* adhan.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 74656D705F616468616E3031 /* adhan.mp3 */; };
+		74656D705F6971616D613034 /* iqama.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 74656D705F6971616D613032 /* iqama.mp3 */; };
 		231115C72EE4A87000EDE5A6 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 231115C62EE4A87000EDE5A6 /* SwiftSoup */; };
 		231115CA2EE4A9B400EDE5A6 /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 231115C92EE4A9B400EDE5A6 /* Adhan */; };
 		231116E72EE4B6BA00EDE5A6 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 231115AA2EE4A7F800EDE5A6 /* WidgetKit.framework */; };
@@ -40,6 +42,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		74656D705F616468616E3031 /* adhan.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; name = adhan.mp3; path = Moatheny/Resources/adhan.mp3; sourceTree = "<group>"; };
+		74656D705F6971616D613032 /* iqama.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; name = iqama.mp3; path = Moatheny/Resources/iqama.mp3; sourceTree = "<group>"; };
 		231115732EE4A74D00EDE5A6 /* Moatheny.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Moatheny.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		231115AA2EE4A7F800EDE5A6 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		231115AC2EE4A7F800EDE5A6 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -109,6 +113,8 @@
 		2311156A2EE4A74D00EDE5A6 = {
 			isa = PBXGroup;
 			children = (
+				74656D705F616468616E3031 /* adhan.mp3 */,
+				74656D705F6971616D613032 /* iqama.mp3 */,
 				238607942EFABAE400CB7C36 /* PrayerTimeWidgetExtension.entitlements */,
 				231115752EE4A74D00EDE5A6 /* Moatheny */,
 				231116E92EE4B6BA00EDE5A6 /* PrayerTimeWidget */,
@@ -235,6 +241,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				74656D705F616468616E3033 /* adhan.mp3 in Resources */,
+				74656D705F6971616D613034 /* iqama.mp3 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -482,7 +490,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = PrayerTimeWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = RF54GDCUBT;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PrayerTimeWidget/Info.plist;
@@ -513,7 +521,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = PrayerTimeWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = RF54GDCUBT;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PrayerTimeWidget/Info.plist;

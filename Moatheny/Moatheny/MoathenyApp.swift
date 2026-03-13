@@ -1,11 +1,14 @@
 import SwiftUI
 import Combine
 import CoreLocation
+import WidgetKit
+import BackgroundTasks
 
 @main
 struct MoathenyApp: App {
     @StateObject private var container = AppContainer()
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @Environment(\.scenePhase) var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -22,6 +25,15 @@ struct MoathenyApp: App {
                 .onAppear {
                     // طلب الأذونات تلقائياً عند بدء التطبيق
                     container.requestAllPermissions()
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .active {
+                        // تحديث الودجت عند فتح التطبيق
+                        WidgetCenter.shared.reloadAllTimelines()
+                    } else if newPhase == .background {
+                        // جدولة التحديث في الخلفية
+                        container.scheduleAppRefresh()
+                    }
                 }
         }
     }
@@ -55,7 +67,7 @@ final class AppContainer: ObservableObject {
     let notifications = NotificationService()
     let downloadManager = DownloadManager()
     let scraper = WebScraper()
-    lazy var qibla = QiblaService(api: api, cache: cache)
+    lazy var qibla = QiblaService(cache: cache)
     let hijri = HijriService()
     let compass = CompassService()
     let mp3Quran = MP3QuranService() // خدمة القراء الصوتيين من mp3quran.net
@@ -70,8 +82,59 @@ final class AppContainer: ObservableObject {
     lazy var settingsVM = SettingsViewModel(notifications: notifications, audio: audio, prayerService: prayerService)
     
     init() {
+        // تسجيل مهام الخلفية
+        registerBackgroundTasks()
+        
         // بدء تحميل البيانات تلقائياً
         setupAutoRefresh()
+    }
+    
+    private func registerBackgroundTasks() {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: "com.YourMangaApp.Moatheny.refresh", using: nil) { task in
+            self.handleAppRefresh(task: task as! BGAppRefreshTask)
+        }
+    }
+    
+    func scheduleAppRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: "com.YourMangaApp.Moatheny.refresh")
+        // التحديث بعد 6 ساعات على الأقل
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 6 * 60 * 60)
+        
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            // print("✅ تم جدولة تحديث الخلفية")
+        } catch {
+            print("❌ فشل جدولة تحديث الخلفية: \(error)")
+        }
+    }
+    
+    private func handleAppRefresh(task: BGAppRefreshTask) {
+        // جدولة التحديث القادم
+        scheduleAppRefresh()
+        
+        // إنشاء عملية للتحديث
+        let operation = Task {
+            // تحديث أوقات الصلاة
+            await prayerVM.refresh()
+            
+            // إعادة جدولة الإشعارات لضمان استمرارها
+            if let day = prayerService.cached() {
+                // نستخدم prayerService مباشرة لأنها تملك notifications
+                // لكن prayerService private? لا، prayerService public (lazy var)
+                // لكن نحتاج الوصول لـ notifications
+                // prayerService.scheduleNotifications is private.
+                // سنستخدم notifications مباشرة
+                notifications.cancelPrayerNotificationsOnly()
+                notifications.scheduleAllPrayers(day.prayers)
+            }
+            
+            task.setTaskCompleted(success: true)
+        }
+        
+        // معالجة انتهاء الوقت المخصص للمهمة
+        task.expirationHandler = {
+            operation.cancel()
+        }
     }
     
     /// طلب جميع الأذونات تلقائياً

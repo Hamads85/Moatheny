@@ -1,6 +1,7 @@
 import Foundation
 import CoreLocation
 import Adhan
+import WidgetKit
 
 /// Handles prayer time retrieval, calculation fallback, caching, and notifications.
 final class PrayerTimeService {
@@ -25,39 +26,46 @@ final class PrayerTimeService {
             throw AppError.permission("Location not available")
         }
 
-        do {
-            var day = try await api.fetchPrayerTimes(lat: coord.latitude, lon: coord.longitude, method: method)
-            day.cityName = cityStore.activeCityName
-            day.hijriDate = hijri.hijriString(for: day.date)
-            try? cache.store(day, named: cacheFileName())
-            savePrayerTimesToSharedDefaults(day)
-            scheduleNotifications(for: day)
-            return day
-        } catch {
-            // Local Adhan fallback
-            let params = method.adhanParameters
-            let comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-            guard let times = PrayerTimes(coordinates: Coordinates(latitude: coord.latitude, longitude: coord.longitude),
-                                          date: comps,
-                                          calculationParameters: params) else {
-                throw AppError.generic("Failed to calculate local prayer times")
-            }
-            let prayers = [
-                Prayer(id: "fajr", name: "Fajr", arabicName: "الفجر", time: times.fajr),
-                Prayer(id: "sunrise", name: "Sunrise", arabicName: "الشروق", time: times.sunrise),
-                Prayer(id: "dhuhr", name: "Dhuhr", arabicName: "الظهر", time: times.dhuhr),
-                Prayer(id: "asr", name: "Asr", arabicName: "العصر", time: times.asr),
-                Prayer(id: "maghrib", name: "Maghrib", arabicName: "المغرب", time: times.maghrib),
-                Prayer(id: "isha", name: "Isha", arabicName: "العشاء", time: times.isha)
-            ]
-            var day = PrayerDay(date: Date(), prayers: prayers)
-            day.cityName = cityStore.activeCityName
-            day.hijriDate = hijri.hijriString(for: day.date)
-            try? cache.store(day, named: cacheFileName())
-            savePrayerTimesToSharedDefaults(day)
-            scheduleNotifications(for: day)
-            return day
+        // Use Adhan library primarily for 100% accuracy and offline support
+        let params = method.adhanParameters
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.year, .month, .day], from: Date())
+        
+        guard let times = PrayerTimes(coordinates: Coordinates(latitude: coord.latitude, longitude: coord.longitude),
+                                      date: comps,
+                                      calculationParameters: params) else {
+            // Fallback to API if local calculation fails (unlikely)
+            return try await loadPrayerTimesFromAPI(method: method, coord: coord)
         }
+        
+        let prayers = [
+            Prayer(id: "fajr", name: "Fajr", arabicName: "الفجر", time: times.fajr),
+            Prayer(id: "sunrise", name: "Sunrise", arabicName: "الشروق", time: times.sunrise),
+            Prayer(id: "dhuhr", name: "Dhuhr", arabicName: "الظهر", time: times.dhuhr),
+            Prayer(id: "asr", name: "Asr", arabicName: "العصر", time: times.asr),
+            Prayer(id: "maghrib", name: "Maghrib", arabicName: "المغرب", time: times.maghrib),
+            Prayer(id: "isha", name: "Isha", arabicName: "العشاء", time: times.isha)
+        ]
+        
+        var day = PrayerDay(date: Date(), prayers: prayers)
+        day.cityName = cityStore.activeCityName
+        day.hijriDate = hijri.hijriString(for: day.date)
+        
+        try? cache.store(day, named: cacheFileName())
+        savePrayerTimesToSharedDefaults(day)
+        scheduleNotifications(for: day)
+        
+        return day
+    }
+    
+    private func loadPrayerTimesFromAPI(method: CalculationMethod, coord: CLLocationCoordinate2D) async throws -> PrayerDay {
+        var day = try await api.fetchPrayerTimes(lat: coord.latitude, lon: coord.longitude, method: method)
+        day.cityName = cityStore.activeCityName
+        day.hijriDate = hijri.hijriString(for: day.date)
+        try? cache.store(day, named: cacheFileName())
+        savePrayerTimesToSharedDefaults(day)
+        scheduleNotifications(for: day)
+        return day
     }
     
     private func savePrayerTimesToSharedDefaults(_ day: PrayerDay) {
@@ -71,6 +79,9 @@ final class PrayerTimeService {
         // حفظ تاريخ آخر تحديث
         sharedDefaults.set(Date(), forKey: "lastPrayerUpdate")
         sharedDefaults.synchronize()
+        
+        // تحديث الودجت فوراً
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func scheduleNotifications(for day: PrayerDay) {

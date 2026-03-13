@@ -57,18 +57,63 @@ struct PrayerTimeProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<PrayerTimeEntry>) -> Void) {
         var entries: [PrayerTimeEntry] = []
         let now = Date()
+        let cal = Calendar.current
         
-        // إنشاء إدخالات للساعات القادمة
-        for minuteOffset in stride(from: 0, to: 60 * 12, by: 15) { // تحديث كل 15 دقيقة لمدة 12 ساعة
-            if let entryDate = Calendar.current.date(byAdding: .minute, value: minuteOffset, to: now) {
-                let entry = createEntry(for: entryDate)
-                entries.append(entry)
+        // 1. Entry for NOW (Immediate update)
+        entries.append(createEntry(for: now))
+        
+        // 2. Calculate future prayer times for accurate scheduling
+        // We need coordinates to calculate exact times
+        var latitude = defaultLatitude
+        var longitude = defaultLongitude
+        
+        if let sharedDefaults = UserDefaults(suiteName: "group.com.YourMangaApp.Moatheny") {
+            if let lat = sharedDefaults.object(forKey: "lastKnownLatitude") as? Double,
+               let lon = sharedDefaults.object(forKey: "lastKnownLongitude") as? Double {
+                latitude = lat
+                longitude = lon
             }
         }
         
-        // تحديث الودجت كل 15 دقيقة
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: now) ?? now
-        let timeline = Timeline(entries: entries, policy: .after(nextUpdate))
+        let coordinates = Coordinates(latitude: latitude, longitude: longitude)
+        var params = CalculationMethod.ummAlQura.params
+        params.madhab = .shafi
+        
+        var futureTimes: [Date] = []
+        
+        // Today's prayers
+        let todayComps = cal.dateComponents([.year, .month, .day], from: now)
+        if let todayPrayers = PrayerTimes(coordinates: coordinates, date: todayComps, calculationParameters: params) {
+            let times = [todayPrayers.fajr, todayPrayers.sunrise, todayPrayers.dhuhr, todayPrayers.asr, todayPrayers.maghrib, todayPrayers.isha]
+            futureTimes.append(contentsOf: times.filter { $0 > now })
+        }
+        
+        // Tomorrow's prayers (to ensure continuity)
+        if let tomorrow = cal.date(byAdding: .day, value: 1, to: now) {
+            let tomorrowComps = cal.dateComponents([.year, .month, .day], from: tomorrow)
+            if let tomorrowPrayers = PrayerTimes(coordinates: coordinates, date: tomorrowComps, calculationParameters: params) {
+                let times = [tomorrowPrayers.fajr, tomorrowPrayers.sunrise, tomorrowPrayers.dhuhr, tomorrowPrayers.asr, tomorrowPrayers.maghrib, tomorrowPrayers.isha]
+                futureTimes.append(contentsOf: times)
+            }
+        }
+        
+        // 3. Create timeline entries at exact prayer times
+        for time in futureTimes {
+            // Entry exactly at prayer time (switches "Next Prayer" to the new one)
+            entries.append(createEntry(for: time))
+            
+            // Entry 20 minutes after (optional, to refresh UI state if needed)
+            if let after20 = cal.date(byAdding: .minute, value: 20, to: time) {
+                entries.append(createEntry(for: after20))
+            }
+        }
+        
+        // Sort and limit
+        entries.sort { $0.date < $1.date }
+        
+        // Create the timeline
+        // policy: .atEnd means request new timeline when these run out (tomorrow)
+        let timeline = Timeline(entries: entries, policy: .atEnd)
         completion(timeline)
     }
     

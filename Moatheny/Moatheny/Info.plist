@@ -23,5 +23,10 @@
 	
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>نحتاج الوصول لموقعك لإرسال إشعارات الصلاة في الوقت المناسب</string>
+	
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.YourMangaApp.Moatheny.refresh</string>
+	</array>
 </dict>
 </plist>
