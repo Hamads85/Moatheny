@@ -673,8 +673,8 @@ struct SurahDetailView: View {
     @State private var fontSize: CGFloat = 24
     @State private var showReciterPicker = false
     @State private var selectedReciter: MP3Reciter?
+    @State private var showMushafMode = false
     
-    // حفظ موضع القراءة
     @AppStorage("last_read_surah") private var lastReadSurah: Int = 0
     @AppStorage("last_read_ayah") private var lastReadAyah: Int = 0
     @State private var scrollProxy: ScrollViewProxy?
@@ -878,27 +878,30 @@ struct SurahDetailView: View {
                             }
                         }
                         
-                        // البسملة
-                        if surah.id != 1 && surah.id != 9 {
-                            Text("بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ")
-                                .font(.system(size: fontSize + 4, weight: .medium))
-                                .foregroundColor(Color(hex: "D4AF37"))
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                        }
+                        if showMushafMode {
+                            MushafPageView(surah: surah, fontSize: fontSize)
+                        } else {
+                            if surah.id != 1 && surah.id != 9 {
+                                Text("بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ")
+                                    .font(.system(size: fontSize + 4, weight: .medium))
+                                    .foregroundColor(Color(hex: "D4AF37"))
+                                    .padding()
+                                    .frame(maxWidth: .infinity)
+                            }
 
-                        ForEach(surah.ayahs) { ayah in
-                            AyahView(
-                                ayah: ayah,
-                                fontSize: fontSize,
-                                selectedReciter: selectedReciter ?? mp3Quran.currentReciter,
-                                surahId: surah.id,
-                                surahName: surah.name,
-                                onBookmark: {
-                                    saveReadingPosition(ayahNumber: ayah.numberInSurah)
-                                }
-                            )
-                            .id("ayah_\(ayah.numberInSurah)")
+                            ForEach(surah.ayahs) { ayah in
+                                AyahView(
+                                    ayah: ayah,
+                                    fontSize: fontSize,
+                                    selectedReciter: selectedReciter ?? mp3Quran.currentReciter,
+                                    surahId: surah.id,
+                                    surahName: surah.name,
+                                    onBookmark: {
+                                        saveReadingPosition(ayahNumber: ayah.numberInSurah)
+                                    }
+                                )
+                                .id("ayah_\(ayah.numberInSurah)")
+                            }
                         }
                     }
                     .padding()
@@ -915,9 +918,16 @@ struct SurahDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 12) {
-                    // زر حفظ الموضع
                     Button {
-                        // حفظ الموضع الحالي (أول آية مرئية)
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            showMushafMode.toggle()
+                        }
+                    } label: {
+                        Image(systemName: showMushafMode ? "list.bullet" : "book.fill")
+                            .foregroundColor(Color(hex: "D4AF37"))
+                    }
+                    
+                    Button {
                         saveReadingPosition(ayahNumber: 1)
                     } label: {
                         Image(systemName: "bookmark")
@@ -1115,6 +1125,150 @@ struct ReciterPickerSheet: View {
     }
 }
 
+// MARK: - Mushaf Page View (عرض المصحف)
+struct MushafPageView: View {
+    let surah: Surah
+    let fontSize: CGFloat
+    @State private var currentPageIndex = 0
+    
+    private var pageGroups: [(page: Int, ayahs: [Ayah])] {
+        let grouped = Dictionary(grouping: surah.ayahs) { $0.page }
+        let sorted = grouped.sorted { $0.key < $1.key }
+        if sorted.count <= 1 && surah.ayahs.count > 20 {
+            let chunkSize = 15
+            return stride(from: 0, to: surah.ayahs.count, by: chunkSize).enumerated().map { idx, start in
+                let end = min(start + chunkSize, surah.ayahs.count)
+                let chunk = Array(surah.ayahs[start..<end])
+                return (page: idx + 1, ayahs: chunk)
+            }
+        }
+        return sorted.isEmpty
+            ? [(page: 1, ayahs: surah.ayahs)]
+            : sorted.map { (page: $0.key, ayahs: $0.value) }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            TabView(selection: $currentPageIndex) {
+                ForEach(Array(pageGroups.enumerated()), id: \.offset) { index, group in
+                    mushafPage(ayahs: group.ayahs, pageNumber: group.page, isFirst: index == 0)
+                        .tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(minHeight: 500)
+            
+            if pageGroups.count > 1 {
+                HStack(spacing: 8) {
+                    Text("صفحة \(toArabicNumber(currentPageIndex + 1)) من \(toArabicNumber(pageGroups.count))")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding(.bottom, 8)
+            }
+        }
+        .environment(\.layoutDirection, .rightToLeft)
+    }
+    
+    @ViewBuilder
+    private func mushafPage(ayahs: [Ayah], pageNumber: Int, isFirst: Bool) -> some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                if isFirst {
+                    surahHeader
+                }
+                
+                Text(buildPageText(ayahs, isFirst: isFirst))
+                    .font(.system(size: fontSize + 2, design: .serif))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(fontSize * 0.75)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 8)
+            }
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(hex: "0D1B2A"))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [Color(hex: "D4AF37").opacity(0.6), Color(hex: "B8860B").opacity(0.2), Color(hex: "D4AF37").opacity(0.6)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 2
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .strokeBorder(Color(hex: "D4AF37").opacity(0.15), lineWidth: 1)
+                            .padding(4)
+                    )
+            )
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+    
+    private var surahHeader: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Spacer()
+                VStack(spacing: 8) {
+                    Text(surah.name)
+                        .font(.system(size: fontSize + 6, weight: .bold, design: .serif))
+                        .foregroundColor(Color(hex: "D4AF37"))
+                    
+                    Text("\(surah.revelationType == "Meccan" ? "مكية" : "مدنية") - \(toArabicNumber(surah.numberOfAyahs)) آيات")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                Spacer()
+            }
+            
+            if surah.id != 1 && surah.id != 9 {
+                Text("بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ")
+                    .font(.system(size: fontSize + 2, weight: .medium, design: .serif))
+                    .foregroundColor(Color(hex: "D4AF37"))
+            }
+            
+            Divider()
+                .background(Color(hex: "D4AF37").opacity(0.3))
+        }
+    }
+    
+    private func buildPageText(_ ayahs: [Ayah], isFirst: Bool) -> AttributedString {
+        var result = AttributedString()
+        
+        for ayah in ayahs {
+            if isFirst && ayah.numberInSurah == 1 && surah.id == 1 {
+                // الفاتحة: تضمين البسملة كآية
+            }
+            
+            var verseText = AttributedString(ayah.text + " ")
+            verseText.foregroundColor = .white
+            
+            let numStr = toArabicNumber(ayah.numberInSurah)
+            var numberText = AttributedString(" \(numStr) ")
+            numberText.foregroundColor = Color(hex: "D4AF37")
+            numberText.font = .system(size: fontSize - 2, weight: .bold, design: .serif)
+            
+            result.append(verseText)
+            result.append(numberText)
+        }
+        
+        return result
+    }
+    
+    private func toArabicNumber(_ number: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "ar")
+        return formatter.string(from: NSNumber(value: number)) ?? "\(number)"
+    }
+}
+
 // MARK: - Ayah View
 struct AyahView: View {
     let ayah: Ayah
@@ -1130,7 +1284,7 @@ struct AyahView: View {
         VStack(alignment: .trailing, spacing: 12) {
             // نص الآية مع رقمها في النهاية (الطريقة الصحيحة للقرآن)
             // النص يبدأ من اليمين ورقم الآية في نهاية الآية
-            Text(ayah.text + " ﴿\(toArabicNumber(ayah.numberInSurah))﴾")
+            Text(buildVerseText())
                 .font(.system(size: fontSize, weight: .regular))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.trailing)
@@ -1190,7 +1344,16 @@ struct AyahView: View {
         }
     }
     
-    // تحويل الأرقام إلى عربية
+    private func buildVerseText() -> AttributedString {
+        var verse = AttributedString(ayah.text + " ")
+        verse.foregroundColor = .white
+        var num = AttributedString(toArabicNumber(ayah.numberInSurah))
+        num.foregroundColor = Color(hex: "D4AF37")
+        num.font = .system(size: fontSize - 2, weight: .bold)
+        verse.append(num)
+        return verse
+    }
+
     private func toArabicNumber(_ number: Int) -> String {
         let formatter = NumberFormatter()
         formatter.locale = Locale(identifier: "ar")
