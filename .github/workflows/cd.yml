@@ -20,6 +20,7 @@ env:
   SCHEME: 'Moatheny'
   PROJECT: 'Moatheny/Moatheny.xcodeproj'
   BUNDLE_ID: 'com.YourMangaApp.Moatheny'
+  WIDGET_BUNDLE_ID: 'com.YourMangaApp.Moatheny.PrayerTimeWidget'
 
 jobs:
   build-and-deploy:
@@ -144,6 +145,7 @@ jobs:
           CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          PROVISIONING_PROFILE_WIDGET_BASE64: ${{ secrets.PROVISIONING_PROFILE_WIDGET_BASE64 }}
         run: |
           set -e
           echo "::group::Install manual signing assets"
@@ -162,17 +164,27 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           rm -f "$CERT_PATH"
 
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+
+          # App profile
           PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
           printf '%s' "$PROVISIONING_PROFILE_BASE64" | tr -d '\n\r\t ' | base64 --decode > "$PROFILE_PATH"
           PROFILE_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw -)
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
-          rm -f "$PROFILE_PATH"
+
+          # Widget profile
+          if [ -n "$PROVISIONING_PROFILE_WIDGET_BASE64" ]; then
+            PROFILE_WIDGET_PATH="$RUNNER_TEMP/profile_widget.mobileprovision"
+            printf '%s' "$PROVISIONING_PROFILE_WIDGET_BASE64" | tr -d '\n\r\t ' | base64 --decode > "$PROFILE_WIDGET_PATH"
+            PROFILE_WIDGET_UUID=$(security cms -D -i "$PROFILE_WIDGET_PATH" | plutil -extract UUID raw -)
+            cp "$PROFILE_WIDGET_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_WIDGET_UUID}.mobileprovision"
+            echo "PROFILE_WIDGET_UUID=$PROFILE_WIDGET_UUID" >> $GITHUB_ENV
+          fi
 
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
           echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> $GITHUB_ENV
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
-          echo "::notice::Certificate and profile installed (UUID: $PROFILE_UUID)"
+          echo "::notice::Certificate and profiles installed (App UUID: $PROFILE_UUID, Widget UUID: ${PROFILE_WIDGET_UUID:-none})"
           echo "::endgroup::"
 
       - name: Increment build number
@@ -273,6 +285,10 @@ jobs:
           echo '  <dict>'
           echo "    <key>${{ env.BUNDLE_ID }}</key>"
           echo "    <string>${PROFILE_UUID}</string>"
+          if [ -n "${PROFILE_WIDGET_UUID:-}" ]; then
+          echo "    <key>${{ env.WIDGET_BUNDLE_ID }}</key>"
+          echo "    <string>${PROFILE_WIDGET_UUID}</string>"
+          fi
           echo '  </dict>'
           else
           echo '  <key>signingStyle</key>'
