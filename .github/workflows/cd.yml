@@ -196,6 +196,59 @@ jobs:
           cd ..
           echo "::notice::Build number set to $BUILD_NUMBER"
 
+      - name: Configure manual signing in project
+        if: steps.signing.outputs.mode == 'manual'
+        env:
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          set -e
+          echo "::group::Patch project.pbxproj for manual signing"
+          PBXPROJ="${{ env.PROJECT }}/project.pbxproj"
+
+          python3 - "$PBXPROJ" "$PROFILE_UUID" "${PROFILE_WIDGET_UUID:-}" << 'PYEOF'
+import sys
+
+pbxproj_path = sys.argv[1]
+profile_app = sys.argv[2]
+profile_widget = sys.argv[3] if len(sys.argv) > 3 else ""
+
+with open(pbxproj_path, "r") as f:
+    lines = f.readlines()
+
+out = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+
+    if "CODE_SIGN_STYLE = Automatic;" in line:
+        bundle_id = None
+        for j in range(max(0, i - 30), min(len(lines), i + 30)):
+            if "PRODUCT_BUNDLE_IDENTIFIER" in lines[j]:
+                if "PrayerTimeWidget" in lines[j]:
+                    bundle_id = "widget"
+                else:
+                    bundle_id = "app"
+                break
+
+        indent = line[:len(line) - len(line.lstrip())]
+        out.append(line.replace("Automatic", "Manual"))
+        out.append(f'{indent}CODE_SIGN_IDENTITY = "Apple Distribution";\n')
+        if bundle_id == "widget" and profile_widget:
+            out.append(f'{indent}PROVISIONING_PROFILE_SPECIFIER = "{profile_widget}";\n')
+        elif bundle_id == "app" and profile_app:
+            out.append(f'{indent}PROVISIONING_PROFILE_SPECIFIER = "{profile_app}";\n')
+    else:
+        out.append(line)
+    i += 1
+
+with open(pbxproj_path, "w") as f:
+    f.writelines(out)
+
+print(f"Patched: app={profile_app}, widget={profile_widget}")
+PYEOF
+
+          echo "::endgroup::"
+
       - name: Archive app
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -215,7 +268,6 @@ jobs:
               -archivePath build/Moatheny.xcarchive \
               -derivedDataPath build/DerivedData \
               -skipPackagePluginValidation \
-              CODE_SIGN_STYLE=Manual \
               DEVELOPMENT_TEAM="$TEAM_ID" \
               COMPILER_INDEX_STORE_ENABLE=NO \
               ENABLE_PREVIEWS=NO
