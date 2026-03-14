@@ -310,6 +310,8 @@ struct PrayerTimeWidgetEntryView: View {
             SmallWidgetView(entry: entry)
         case .systemMedium:
             MediumWidgetView(entry: entry)
+        case .systemLarge:
+            LargeWidgetView(entry: entry)
         case .accessoryRectangular:
             AccessoryRectangularView(entry: entry)
         case .accessoryInline:
@@ -325,49 +327,53 @@ struct SmallWidgetView: View {
     let entry: PrayerTimeEntry
     
     var body: some View {
-        ZStack {
-            // الخلفية
-            LinearGradient(
-                colors: [Color(hex: "1A3A2F"), Color(hex: "0D1F17")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            
-            VStack(spacing: 8) {
-                // العنوان
-                HStack {
-                    Image(systemName: "moon.stars.fill")
-                        .font(.caption)
-                        .foregroundColor(Color(hex: "D4AF37"))
-                    Text("الصلاة القادمة")
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.7))
-                    Spacer()
-                }
-                
-                if let nextPrayer = entry.nextPrayer {
-                    // اسم الصلاة
-                    Text(nextPrayer.arabicName)
-                        .font(.title2.bold())
-                        .foregroundColor(.white)
-                    
-                    // الوقت المتبقي
-                    Text(timeRemainingText(to: nextPrayer.time, from: entry.date))
-                        .font(.headline)
-                        .foregroundColor(Color(hex: "43AA8B"))
-                    
-                    // وقت الصلاة
-                    Text(formatTime(nextPrayer.time))
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
-                } else {
-                    Text("جاري التحميل...")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
-                }
+        VStack(spacing: 0) {
+            HStack(spacing: 4) {
+                Text(entry.locationName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.8))
+                Image(systemName: "location.fill")
+                    .font(.system(size: 7))
+                    .foregroundColor(Color(hex: "D4AF37"))
+                Spacer()
+                Image(systemName: "moon.stars.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(hex: "D4AF37").opacity(0.5))
             }
-            .padding()
+            
+            Text(entry.hijriDate)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(.white.opacity(0.35))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.top, 1)
+            
+            Spacer()
+            
+            if let nextPrayer = entry.nextPrayer {
+                Text(nextPrayer.arabicName)
+                    .font(.system(size: 28, weight: .heavy, design: .rounded))
+                    .foregroundColor(Color(hex: "D4AF37"))
+                    .minimumScaleFactor(0.7)
+                    .shadow(color: Color(hex: "D4AF37").opacity(0.2), radius: 6)
+                
+                Text(timeRemainingText(to: nextPrayer.time, from: entry.date))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.top, 3)
+                
+                Text(formatTime(nextPrayer.time))
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.4))
+                    .padding(.top, 1)
+            } else {
+                Text("جاري التحميل...")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            
+            Spacer()
         }
+        .environment(\.layoutDirection, .rightToLeft)
     }
 }
 
@@ -376,74 +382,192 @@ struct MediumWidgetView: View {
     let entry: PrayerTimeEntry
     
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color(hex: "1A3A2F"), Color(hex: "0D1F17")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            
-            HStack(spacing: 16) {
-                // القسم الأيسر - الصلاة القادمة
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Image(systemName: "moon.stars.fill")
-                            .foregroundColor(Color(hex: "D4AF37"))
-                        Text("الصلاة القادمة")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                    }
-                    
-                    if let nextPrayer = entry.nextPrayer {
-                        Text(nextPrayer.arabicName)
-                            .font(.title.bold())
-                            .foregroundColor(.white)
-                        
-                        // العد التنازلي أو التصاعدي
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(timeRemainingText(to: nextPrayer.time, from: entry.date))
-                                .font(.headline)
-                                .foregroundColor(Color(hex: "43AA8B"))
-                            
-                            Text(formatTime(nextPrayer.time))
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.6))
-                        }
-                        
-                        // إذا مضى وقت على الأذان
-                        if let previous = entry.previousPrayer, entry.date > previous.time {
-                            let elapsed = entry.date.timeIntervalSince(previous.time)
-                            if elapsed < 3600 { // أقل من ساعة
-                                Text("مضى على \(previous.arabicName): \(formatElapsedTime(elapsed))")
-                                    .font(.caption2)
-                                    .foregroundColor(Color(hex: "FF6B6B"))
-                            }
-                        }
-                    }
+        HStack(spacing: 0) {
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 4) {
+                    Text("الصلاة القادمة")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.45))
+                    Image(systemName: "moon.stars.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(Color(hex: "D4AF37").opacity(0.6))
                 }
                 
                 Spacer()
                 
-                // القسم الأيمن - معلومات إضافية
-                VStack(alignment: .trailing, spacing: 8) {
+                if let nextPrayer = entry.nextPrayer {
+                    Text(nextPrayer.arabicName)
+                        .font(.system(size: 32, weight: .heavy, design: .rounded))
+                        .foregroundColor(Color(hex: "D4AF37"))
+                        .minimumScaleFactor(0.7)
+                        .shadow(color: Color(hex: "D4AF37").opacity(0.2), radius: 6)
+                    
+                    Text(timeRemainingText(to: nextPrayer.time, from: entry.date))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.top, 1)
+                    
+                    Text(formatTime(nextPrayer.time))
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.45))
+                        .padding(.top, 1)
+                }
+                
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            
+            Rectangle()
+                .fill(Color(hex: "D4AF37").opacity(0.15))
+                .frame(width: 0.5)
+                .padding(.vertical, 8)
+            
+            VStack(alignment: .leading, spacing: 6) {
+                Text("الموقع الحالي")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.white.opacity(0.35))
+                
+                HStack(spacing: 3) {
                     Text(entry.locationName)
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.7))
-                    
-                    Text(entry.hijriDate)
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.5))
-                    
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                    Image(systemName: "location.fill")
+                        .font(.system(size: 7))
+                        .foregroundColor(Color(hex: "D4AF37"))
+                }
+                
+                Text(entry.hijriDate)
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.35))
+                
+                Spacer()
+                
+                if let previous = entry.previousPrayer {
+                    let elapsed = entry.date.timeIntervalSince(previous.time)
+                    if elapsed > 0 && elapsed < 3600 {
+                        Text("مضى على \(previous.arabicName)")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.3))
+                        Text(formatElapsedTime(elapsed))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                }
+                
+                HStack {
                     Spacer()
-                    
-                    // أيقونة الكعبة
                     Image(systemName: "building.columns.fill")
-                        .font(.title2)
-                        .foregroundColor(Color(hex: "D4AF37").opacity(0.5))
+                        .font(.system(size: 20))
+                        .foregroundColor(Color(hex: "D4AF37").opacity(0.12))
                 }
             }
-            .padding()
+            .frame(maxWidth: .infinity)
+            .padding(.leading, 12)
         }
+        .environment(\.layoutDirection, .rightToLeft)
+    }
+}
+
+// MARK: - Large Widget View
+struct LargeWidgetView: View {
+    let entry: PrayerTimeEntry
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                HStack(spacing: 4) {
+                    Text(entry.locationName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                    Image(systemName: "location.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(Color(hex: "D4AF37"))
+                }
+                Spacer()
+                Text(entry.hijriDate)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.35))
+            }
+            .padding(.bottom, 14)
+            
+            if let nextPrayer = entry.nextPrayer {
+                HStack {
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text("الصلاة القادمة")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.4))
+                        Text(nextPrayer.arabicName)
+                            .font(.system(size: 26, weight: .heavy, design: .rounded))
+                            .foregroundColor(Color(hex: "D4AF37"))
+                            .shadow(color: Color(hex: "D4AF37").opacity(0.15), radius: 4)
+                    }
+                    Spacer()
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(timeRemainingText(to: nextPrayer.time, from: entry.date))
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                        Text(formatTime(nextPrayer.time))
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.45))
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(Color(hex: "D4AF37").opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color(hex: "D4AF37").opacity(0.12), lineWidth: 0.5)
+                        )
+                )
+                .padding(.bottom, 14)
+            }
+            
+            Rectangle()
+                .fill(Color.white.opacity(0.06))
+                .frame(height: 0.5)
+                .padding(.bottom, 6)
+            
+            VStack(spacing: 0) {
+                ForEach(Array(entry.allPrayers.enumerated()), id: \.offset) { index, prayer in
+                    let isNext = entry.nextPrayer?.name == prayer.name
+                    
+                    HStack {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(isNext ? Color(hex: "D4AF37") : .white.opacity(0.15))
+                                .frame(width: 5, height: 5)
+                            Text(prayer.arabicName)
+                                .font(.system(size: 15, weight: isNext ? .bold : .regular))
+                                .foregroundColor(isNext ? Color(hex: "D4AF37") : .white.opacity(0.65))
+                        }
+                        
+                        Spacer()
+                        
+                        Text(formatTime(prayer.time))
+                            .font(.system(size: 15, weight: isNext ? .bold : .regular, design: .rounded))
+                            .foregroundColor(isNext ? .white : .white.opacity(0.4))
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(isNext ? Color(hex: "D4AF37").opacity(0.05) : .clear)
+                    )
+                    
+                    if index < entry.allPrayers.count - 1 {
+                        Rectangle()
+                            .fill(.white.opacity(0.04))
+                            .frame(height: 0.5)
+                            .padding(.horizontal, 10)
+                    }
+                }
+            }
+            
+            Spacer()
+        }
+        .environment(\.layoutDirection, .rightToLeft)
     }
 }
 
@@ -452,22 +576,25 @@ struct AccessoryRectangularView: View {
     let entry: PrayerTimeEntry
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .trailing, spacing: 2) {
             if let nextPrayer = entry.nextPrayer {
-                HStack {
-                    Image(systemName: "moon.fill")
+                HStack(spacing: 4) {
                     Text(nextPrayer.arabicName)
-                        .font(.headline)
+                        .font(.system(size: 15, weight: .bold))
+                    Image(systemName: "moon.fill")
+                        .font(.system(size: 10))
                 }
                 
                 Text(timeRemainingText(to: nextPrayer.time, from: entry.date))
-                    .font(.caption)
+                    .font(.system(size: 12, weight: .medium))
                 
                 Text(formatTime(nextPrayer.time))
-                    .font(.caption2)
+                    .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .environment(\.layoutDirection, .rightToLeft)
     }
 }
 
@@ -489,7 +616,6 @@ func timeRemainingText(to targetDate: Date, from currentDate: Date) -> String {
     let interval = targetDate.timeIntervalSince(currentDate)
     
     if interval <= 0 {
-        // الوقت مضى - عرض "حان الوقت" أو العد التصاعدي
         let elapsed = abs(interval)
         if elapsed < 60 {
             return "حان الآن"
@@ -567,15 +693,21 @@ struct PrayerTimeWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: PrayerTimeProvider()) { entry in
             PrayerTimeWidgetEntryView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(for: .widget) {
+                    LinearGradient(
+                        colors: [Color(hex: "0D1B2A"), Color(hex: "1B2838")],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
         }
         .configurationDisplayName("مواقيت الصلاة")
         .description("يعرض الوقت المتبقي للصلاة القادمة")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular, .accessoryInline])
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
 #Preview(as: .systemSmall) {
     PrayerTimeWidget()
 } timeline: {
@@ -583,9 +715,16 @@ struct PrayerTimeWidget: Widget {
         date: .now,
         nextPrayer: PrayerData(name: "Dhuhr", arabicName: "الظهر", time: .now.addingTimeInterval(3600), isNext: true),
         previousPrayer: PrayerData(name: "Fajr", arabicName: "الفجر", time: .now.addingTimeInterval(-7200), isNext: false),
-        allPrayers: [],
+        allPrayers: [
+            PrayerData(name: "Fajr", arabicName: "الفجر", time: .now.addingTimeInterval(-7200), isNext: false),
+            PrayerData(name: "Sunrise", arabicName: "الشروق", time: .now.addingTimeInterval(-5400), isNext: false),
+            PrayerData(name: "Dhuhr", arabicName: "الظهر", time: .now.addingTimeInterval(3600), isNext: true),
+            PrayerData(name: "Asr", arabicName: "العصر", time: .now.addingTimeInterval(10800), isNext: false),
+            PrayerData(name: "Maghrib", arabicName: "المغرب", time: .now.addingTimeInterval(18000), isNext: false),
+            PrayerData(name: "Isha", arabicName: "العشاء", time: .now.addingTimeInterval(21600), isNext: false)
+        ],
         locationName: "الرياض",
-        hijriDate: "٢٣ جمادى الآخرة ١٤٤٦",
+        hijriDate: "٢٥ رمضان ١٤٤٧",
         state: .loaded
     )
 }
@@ -599,7 +738,28 @@ struct PrayerTimeWidget: Widget {
         previousPrayer: PrayerData(name: "Dhuhr", arabicName: "الظهر", time: .now.addingTimeInterval(-1800), isNext: false),
         allPrayers: [],
         locationName: "الرياض",
-        hijriDate: "٢٣ جمادى الآخرة ١٤٤٦",
+        hijriDate: "٢٥ رمضان ١٤٤٧",
+        state: .loaded
+    )
+}
+
+#Preview(as: .systemLarge) {
+    PrayerTimeWidget()
+} timeline: {
+    PrayerTimeEntry(
+        date: .now,
+        nextPrayer: PrayerData(name: "Dhuhr", arabicName: "الظهر", time: .now.addingTimeInterval(3600), isNext: true),
+        previousPrayer: PrayerData(name: "Fajr", arabicName: "الفجر", time: .now.addingTimeInterval(-7200), isNext: false),
+        allPrayers: [
+            PrayerData(name: "Fajr", arabicName: "الفجر", time: .now.addingTimeInterval(-7200), isNext: false),
+            PrayerData(name: "Sunrise", arabicName: "الشروق", time: .now.addingTimeInterval(-5400), isNext: false),
+            PrayerData(name: "Dhuhr", arabicName: "الظهر", time: .now.addingTimeInterval(3600), isNext: true),
+            PrayerData(name: "Asr", arabicName: "العصر", time: .now.addingTimeInterval(10800), isNext: false),
+            PrayerData(name: "Maghrib", arabicName: "المغرب", time: .now.addingTimeInterval(18000), isNext: false),
+            PrayerData(name: "Isha", arabicName: "العشاء", time: .now.addingTimeInterval(21600), isNext: false)
+        ],
+        locationName: "الرياض",
+        hijriDate: "٢٥ رمضان ١٤٤٧",
         state: .loaded
     )
 }
