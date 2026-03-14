@@ -7000,6 +7000,7 @@ private struct SourceBadge: View {
         case .api: return "المصدر: API القبلة"
         case .cache: return isStale ? "المصدر: كاش قديم" : "المصدر: كاش"
         case .gpsFallback: return "المصدر: GPS (بديل)"
+        case .localCalculation: return "المصدر: حساب محلي دقيق"
         }
     }
     
@@ -7008,6 +7009,7 @@ private struct SourceBadge: View {
         case .api: return QiblaTheme.accentStrong
         case .cache: return isStale ? .orange : QiblaTheme.accent
         case .gpsFallback: return .orange
+        case .localCalculation: return QiblaTheme.accentStrong
         }
     }
     
