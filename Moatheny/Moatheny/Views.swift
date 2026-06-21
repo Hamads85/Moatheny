@@ -1053,9 +1053,8 @@ struct SurahDetailView: View {
                     .frame(maxWidth: .infinity)
             }
             
-            Text(buildMushafText(for: targetSurah))
+            buildMushafView(for: targetSurah)
                 .font(.system(size: fontSize + 2, design: .serif))
-                .foregroundColor(.white)
                 .multilineTextAlignment(.center)
                 .lineSpacing(fontSize * 0.75)
                 .frame(maxWidth: .infinity)
@@ -1077,19 +1076,17 @@ struct SurahDetailView: View {
                         )
                 )
         )
-        .environment(\.layoutDirection, .rightToLeft)
     }
     
-    private func buildMushafText(for targetSurah: Surah) -> AttributedString {
-        var result = AttributedString()
+    private func buildMushafView(for targetSurah: Surah) -> Text {
+        var result = Text("")
         for ayah in targetSurah.ayahs {
-            var verseText = AttributedString(ayah.text + " ")
-            verseText.foregroundColor = .white
-            var numberText = AttributedString(" \(toArabicNumber(ayah.numberInSurah)) ")
-            numberText.foregroundColor = Color(hex: "D4AF37")
-            numberText.font = .system(size: fontSize - 2, weight: .bold, design: .serif)
-            result.append(verseText)
-            result.append(numberText)
+            result = result
+                + Text(ayah.text + " ")
+                    .foregroundColor(.white)
+                + Text(" \(toArabicNumber(ayah.numberInSurah)) ")
+                    .foregroundColor(Color(hex: "D4AF37"))
+                    .font(.system(size: fontSize - 2, weight: .bold, design: .serif))
         }
         return result
     }
