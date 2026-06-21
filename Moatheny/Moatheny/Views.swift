@@ -1053,9 +1053,7 @@ struct SurahDetailView: View {
                     .frame(maxWidth: .infinity)
             }
             
-            buildMushafView(for: targetSurah)
-                .font(.system(size: fontSize + 2, design: .serif))
-                .multilineTextAlignment(.center)
+            Text(buildMushafAttributedString(for: targetSurah))
                 .lineSpacing(fontSize * 0.75)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 4)
@@ -1078,17 +1076,33 @@ struct SurahDetailView: View {
         )
     }
     
-    private func buildMushafView(for targetSurah: Surah) -> Text {
-        var result = Text("")
+    private func buildMushafAttributedString(for targetSurah: Surah) -> AttributedString {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.baseWritingDirection = .rightToLeft
+        paragraphStyle.alignment = .center
+        
+        let body = NSMutableAttributedString()
+        let bodyFont = UIFont.systemFont(ofSize: fontSize + 2)
+        let numFont = UIFont.boldSystemFont(ofSize: fontSize - 2)
+        let goldColor = UIColor(Color(hex: "D4AF37"))
+        
         for ayah in targetSurah.ayahs {
-            result = result
-                + Text(ayah.text + " ")
-                    .foregroundColor(.white)
-                + Text(" \(toArabicNumber(ayah.numberInSurah)) ")
-                    .foregroundColor(Color(hex: "D4AF37"))
-                    .font(.system(size: fontSize - 2, weight: .bold, design: .serif))
+            let verse = NSAttributedString(string: ayah.text + " ", attributes: [
+                .foregroundColor: UIColor.white,
+                .font: bodyFont,
+                .paragraphStyle: paragraphStyle
+            ])
+            body.append(verse)
+            
+            let num = NSAttributedString(string: " \(toArabicNumber(ayah.numberInSurah)) ", attributes: [
+                .foregroundColor: goldColor,
+                .font: numFont,
+                .paragraphStyle: paragraphStyle
+            ])
+            body.append(num)
         }
-        return result
+        
+        return AttributedString(body)
     }
     
     private func togglePlayback() {
