@@ -1,0 +1,77 @@
+Moatheny — Adhan and Iqama Audio Sources and Attribution
+Source records checked: 2026-11-10
+
+1. ADHAN
+
+Creator and caller: Asim Javed
+Title: ICR Friday Prayer 2nd Adhan 17th May 2024 9th Dhul Qadah 1445 By Asim Javed
+Recording date: 2024-05-17
+License: CC0 1.0 Universal Public Domain Dedication
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+License legal text: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+Publication and license evidence:
+https://archive.org/details/icr-friday-prayer-2nd-adhan-17th-may-2024-9th-dhul-qadah-1445-by-asim-javed
+
+Machine-readable source record:
+https://archive.org/metadata/icr-friday-prayer-2nd-adhan-17th-may-2024-9th-dhul-qadah-1445-by-asim-javed
+
+Original WAV download:
+https://archive.org/download/icr-friday-prayer-2nd-adhan-17th-may-2024-9th-dhul-qadah-1445-by-asim-javed/ICR_Friday_Prayer_2nd_Adhan_17th_May_2024_9th_Dhul_Qadah_1445_by_Asim_Javed.wav
+
+Original duration: 74.92 seconds
+Original SHA-1: 1d39ec0c08c02a367e59098f0581ff3d74ccd913
+
+Source metadata identifies Asim Javed as creator and caller and lists
+https://creativecommons.org/publicdomain/zero/1.0/ as the license URL.
+
+Changes in Moatheny: the original WAV recording was converted to MP3 and its
+volume was normalized. Notification sounds shorter than 30 seconds were
+derived from the opening takbirs and converted to the app's notification
+audio format. The recording is credited here even though CC0 does not
+require attribution.
+
+
+2. IQAMA
+
+Creator: Joseph Lloyd Zacker
+Title: Islamic Prayer Procedure Audio for New Muslims
+Publication date: 2025-07-27
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+License URL: https://creativecommons.org/licenses/by/4.0/
+License legal text: https://creativecommons.org/licenses/by/4.0/legalcode
+
+Publication and license evidence:
+https://archive.org/details/salah-islamic-prayer-translation-with-audio
+
+Machine-readable source record:
+https://archive.org/metadata/salah-islamic-prayer-translation-with-audio
+
+Original MP3 download:
+https://archive.org/download/salah-islamic-prayer-translation-with-audio/Islamic-Salat-Procedure.mp3
+
+Original duration: 1123.90 seconds
+Original SHA-1: ad84d7a0e28f656f24188f2926ae4022777d002f
+Iqama excerpt: 237.000–278.000 seconds (41.000 seconds)
+
+Source metadata identifies Joseph Lloyd Zacker as the creator, describes
+the recording as including athan, iqama, supplications, recitation and
+taslim, and lists https://creativecommons.org/licenses/by/4.0/ as the
+license URL.
+
+Attribution:
+Iqama excerpt from “Islamic Prayer Procedure Audio for New Muslims” by
+Joseph Lloyd Zacker (27 July 2025), licensed under CC BY 4.0.
+Source: https://archive.org/details/salah-islamic-prayer-translation-with-audio
+License: https://creativecommons.org/licenses/by/4.0/
+
+Changes in Moatheny: the iqama passage was excerpted at 237.000–278.000
+seconds, its volume was normalized, and it was converted to MP3.
+Notification sounds shorter than 30 seconds were derived from the opening
+takbirs and converted to the app's notification audio format.
+
+The license permits sharing and adaptation, including commercial use,
+subject to its terms. Appropriate credit, a license link, and an indication
+of changes are provided above. Neither creator is represented as endorsing
+Moatheny. Rights in the source recordings are governed by their respective
+licenses; this notice does not replace those licenses.
